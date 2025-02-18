@@ -1,0 +1,5 @@
+README.html
+*/__pycache__
+*.DS_Store
+*.README.html
+README_files/
