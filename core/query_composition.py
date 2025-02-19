@@ -78,33 +78,41 @@ def compose_coalesced_outer_join_query(project: str, dataset: str, table_v1: str
 
 def compose_coalesce_loop_variable_query(project, dataset, table) -> str:
     """
-    Generates a SQL query that coalesces multiple versions of loop variables and assigns them an appropriate name.
-    
-    This function assumes that all variable names have been pre-processed and are "pure" (i.e. they contain only
-    standard tokens: a "D" (or "d"), a 9-digit concept ID, and a single-digit loop number). If any variable is not pure,
-    an error is raised.
-    
-    For each group of variables, the ordered concept IDs are extracted from the first variable and used to build a new alias.
-    For example, if the first variable in a group is:
-    
+    Generates a SQL query to coalesce multiple versions of loop variables.
+
+    This function assumes all variable names are **pure**, meaning they contain only:
+        - A **"D" (or "d")** prefix.
+        - A **9-digit concept ID**.
+        - A **single-digit loop number**.
+
+    If a variable does not meet these conditions, a `ValueError` is raised.
+
+    **How It Works**:
+    - Groups of variables are processed to extract their **ordered concept IDs**.
+    - A new alias is constructed using these IDs.
+
+    **Example**:
+        Given the first variable in a group:
+        ```plaintext
         D_812370563_1_1_D_812370563_1_1_D_665036297
-    
-    then the ordered concept IDs are:
-    
+        ```
+        The extracted concept IDs:
+        ```plaintext
         ['812370563', '812370563', '665036297']
-    
-    and the new alias will be:
-    
+        ```
+        The generated alias:
+        ```plaintext
         d_812370563_d_812370563_d_665036297_1
-    
+        ```
+
     Args:
-        project  (str): The Google Cloud project ID.
-        dataset  (str): The BigQuery dataset containing the table.
-        table    (str): The name of the table (e.g., 'module1_v1_JP').
-    
+        project (str): The Google Cloud project ID.
+        dataset (str): The BigQuery dataset containing the table.
+        table (str): The name of the table (e.g., 'module1_v1_JP').
+
     Returns:
         str: A dynamically generated SQL query string.
-    
+
     Raises:
         ValueError: If any variable name is not pure.
     """

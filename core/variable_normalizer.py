@@ -1,24 +1,21 @@
 import re
 
 def fix_impure_variable(var: str, exception_map: dict) -> str:
-    """
-    Fixes a variable name that contains exception tokens by replacing them 
-    with the appropriate concept id according to exception_map.
-    
-    The exception_map is a dictionary mapping tokens (e.g. "SIBCANC3O")
-    to their replacement concept id (e.g. "123456789").
-    
-    For example, if exception_map = {"SIBCANC3O": "123456789"}, then:
-    
-        >>> fix_non_pure_variable("D_259089008_1_1_SIBCANC3O_D_962468280_1", exception_map)
-        "D_259089008_1_1_D_123456789_1_1_D_962468280_1"
-    
+    """Replaces exception tokens in a variable name with mapped concept IDs.
+
+    Tokens found in `exception_map` are replaced with `D_<concept_id>`, while 
+    other tokens remain unchanged.
+
+    Example:
+        >>> fix_impure_variable("D_259089008_SIBCANC3O_962468280", {"SIBCANC3O": "123456789"})
+        'D_259089008_D_123456789_962468280'
+
     Args:
-        var (str): The original variable name.
-        exception_map (dict): A mapping of exception tokens to replacement concept IDs.
-    
+        var (str): The input variable name.
+        exception_map (dict): Mapping of tokens to concept IDs.
+
     Returns:
-        str: The fixed variable name.
+        str: The updated variable name.
     """
     # Tokenize the variable name by underscores.
     tokens = var.split('_')
@@ -37,25 +34,39 @@ def fix_impure_variable(var: str, exception_map: dict) -> str:
     return fixed_var
 
 def fix_all_variables(variable_list: list, exception_map: dict) -> list:
-    """
-    Processes a list of variable names, replacing any exceptions based on the exception_map.
-    
-    Before fixing variables, it checks each variable for any token that is not allowed (i.e. not:
-      - The literal "D" (or "d"),
-      - A 9-digit number, or
-      - A single digit)
-    If any such token is found and is not present in the exception_map, a ValueError is raised.
-    
-    Args:
-        variable_list (list): A list of variable names.
-        exception_map (dict): A mapping of exception tokens to replacement concept IDs.
-    
-    Returns:
-        list: A new list of fixed variable names.
+    """Validates and fixes variable names by replacing exceptions with concept IDs.
+
+    This function processes a list of variable names, ensuring all tokens conform 
+    to allowed formats. Tokens that do not meet the criteria must be mapped in 
+    `exception_map`; otherwise, an error is raised.
+
+    **Allowed tokens**:
+        - The literal "D" (case-insensitive).
+        - A **single-digit number** (0-9).
+        - A **9-digit numeric concept ID** (e.g., "123456789").
+
+    **Behavior**:
+        - If a token is **not in the allowed formats** and **not in `exception_map`**, 
+          a `ValueError` is raised.
+        - Otherwise, tokens in `exception_map` are replaced with `"D_<concept_id>"`.
+
+    Example:
+        >>> exception_map = {"SIBCANC3O": "123456789", "ABC123": "987654321"}
+        >>> variables = ["D_259089008_1_SIBCANC3O", "D_962468280_D_ABC123", "D_123456789"]
+        >>> fix_all_variables(variables, exception_map)
+        ['D_259089008_1_D_123456789', 'D_962468280_D_987654321', 'D_123456789']
         
+    Args:
+        variable_list (list): A list of variable names to process.
+        exception_map (dict): A dictionary mapping non-conforming tokens to replacement concept IDs.
+
+    Returns:
+        list: A new list of variable names with exceptions replaced.
+
     Raises:
-        ValueError: If any non-pure tokens are found that do not have a mapping in exception_map.
+        ValueError: If any non-conforming tokens do not have a mapping in `exception_map`.
     """
+
     missing_tokens = set()
     # Define allowed tokens:
     # Allowed tokens are: "D" (or "d"), 9-digit numbers, or a single digit.
