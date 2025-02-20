@@ -1,10 +1,9 @@
 # pr2-transformation
 
-
 ### Workflow Diagram
+## [DRAFT] Data Flow Diagram: *FlatConnect* --> *CleanConnect*
 
 ```mermaid
-
 flowchart LR
  subgraph FlatConnect["FlatConnect"]
         fc_mod1_v1["module1_v1"]
@@ -15,7 +14,7 @@ flowchart LR
         fc_mod4["module_4_v1"]
         fc_bs["bioSurvey_v1"]
         fc_c19["covid19Survey_v1"]
-        fc_prom["promis_v1]
+        fc_prom["promis_v1"]
   end
  subgraph CleanConnect["CleanConnect"]
         cc_mod1["module1"]
@@ -45,16 +44,74 @@ flowchart LR
     fc_prom --> cc_prom
     style FlatConnect fill:#FFF9C4
     style CleanConnect fill:#C8E6C9
-
 ```
 
-# TODO: Be agnostic to number of versions of each module so that it doesn't need to be rewritten
-#      - Save SQL files to particular file for dates OR use versioned histories of files (like VCS)
-#      - Eddy suggests not putting artifacts in GitHub
-#      - Submit directly to BigQuery
-#      - Consider using "task groups"
+## [DRAFT] Diagram of proposed data structure changes to *Module 4: Where you live and work*
 
+```mermaid
+erDiagram
+    PARTICIPANT ||--o{ ADDRESS : ""
+    ADDRESS ||--|| JOB : ""
+    ADDRESS ||--|| SCHOOL : ""
+    ADDRESS }|--|| COMMUTE : ""
+    PARTICIPANT ||--o{ JOB : ""
+    PARTICIPANT ||--o{ SCHOOL : ""
+      PARTICIPANT ||--o{ COMMUTE : ""
+    
+    PARTICIPANT {
+        int connect_id PK
+        str name
+    }
+    
+    ADDRESS {
+        int connect_id PK, FK
+        int address_id PK
+        str address_type
+        int street_number
+        str street_name
+        str city
+        str state
+        int zip
+        float latitude
+        float longitude
+        date start_date
+        date end_date
+    }
+    
+    JOB {
+        int job_id PK
+        int connect_id FK
+        int address_id FK
+        int occupation
+        str employer
+    }
 
-# Tasks:
+    SCHOOL {
+        int connect_id
+        int school_id
+        str school_name
+    }
 
-- read_schema >> generate_sql >> save_sql_to_gcs_bucket >> read_sql_from_gcs_bucket >> submit_to_bq
+    COMMUTE {
+        int connect_id FK, PK
+        int departure_address_id FK, PK
+        int destination_address_id FK, PK
+        str commute_type
+        str commute_days_per_week
+        str commute_time
+    }
+```
+
+# Misc. notes
+### TODO: Be agnostic to number of versions of each module so that it doesn't need to be rewritten
+- Save SQL files to particular file for dates OR use versioned histories of files (like VCS)
+
+### Notes from Eddy:
+- Eddy suggests not putting artifacts in GitHub
+- Submit directly to BigQuery
+- Consider using "task groups"
+
+### Potential DAG structure:
+```
+read_schema >> generate_sql >> save_sql_to_gcs_bucket >> read_sql_from_gcs_bucket >> submit_to_bq
+```
