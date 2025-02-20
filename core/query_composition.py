@@ -1,7 +1,6 @@
 import logging
 from google.cloud import bigquery
-import bq_utils 
-import str_utils
+import utils as utils
 
 def compose_coalesced_outer_join_query(project: str, dataset: str, table_v1: str, table_v2: str) -> str:
     """
@@ -23,8 +22,8 @@ def compose_coalesced_outer_join_query(project: str, dataset: str, table_v1: str
     
     client = bigquery.Client(project=project)
 
-    v1_columns = bq_utils.get_column_names(client, project, dataset, table_v1)
-    v2_columns = bq_utils.get_column_names(client, project, dataset, table_v2)
+    v1_columns = utils.get_column_names(client, project, dataset, table_v1)
+    v2_columns = utils.get_column_names(client, project, dataset, table_v2)
 
     if not v1_columns and not v2_columns:
         logging.error("No columns retrieved from either table. Exiting.")
@@ -120,21 +119,21 @@ def compose_coalesce_loop_variable_query(project, dataset, table) -> str:
     client = bigquery.Client(project=project)
     
     # Retrieve all variable names from the table.
-    variables = bq_utils.get_column_names(client, project, dataset, table)
+    variables = utils.get_column_names(client, project, dataset, table)
     
     # Assert that all variables are pure.
     for var in variables:
-        if not str_utils.is_pure_variable(var):
+        if not utils.is_pure_variable(var):
             raise ValueError(f"Variable '{var}' is not pure. Please pre-process exceptions before composing the query.")
     
     # Group pure variables by concept IDs and loop number.
-    grouped_loop_vars = str_utils.group_vars_by_cid_and_loop_num(variables)
+    grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
     
     select_clauses = []
     for key, var_list in grouped_loop_vars.items():
         loop_number = key[1]
         first_var = var_list[0]
-        ordered_ids = str_utils.extract_ordered_concept_ids(first_var)
+        ordered_ids = utils.extract_ordered_concept_ids(first_var)
         # Build the new alias preserving order:
         new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}"
         
