@@ -116,16 +116,3 @@ TRANSFORM_CONFIG = {
     }
 }
 
-
-# -----------------------------------------------------------------------------
-# Example Usage
-# -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Iterate through the mappings of the "fix_loop_variables" transformation group.
-    print("Fix loop variables mappings:\n")
-    fix_loop_group = TRANSFORM_CONFIG["fix_loop_variables"]
-    for mapping in fix_loop_group["mappings"]:
-        print(f"\nSource Table: {mapping['source']}")
-        print(f"Destination Table: {mapping['destination']}\n")
-        print("-" * 80)
-    
