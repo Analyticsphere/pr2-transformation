@@ -58,7 +58,7 @@ def save_sql_string(sql: str, path: str, storage_client: storage.Client = None) 
     if path.startswith("gs://"):
         # Remove the gs:// scheme and split bucket name from the rest of the path.
         path_without_scheme = path.replace('gs://', '')
-        # Split into two parts: (1) bucket_name and (2) Everything after the first '/', i.e., the blob_path
+        # Split into two parts: (1) bucket_name and (2) Everything after the first '/' (i.e., the blob_path)
         parts = path_without_scheme.split(sep='/', maxsplit=1)
         if len(parts) != 2:
             raise ValueError("GCS path must be in the format gs://bucket_name/path/to/file")
