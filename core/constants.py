@@ -6,7 +6,8 @@ from enum import Enum
 # -----------------------------------------------------------------------------
 
 SERVICE_NAME = "pr2-transformation"
-OUTPUT_SQL_PATH = "gs://pr2-pipeline-artifacts/sql"  # Can be local path or GCS Bucket, e.g., "gs://my-bucket/queries"
+ARTIFACT_GCS_BUCKET = os.environ.get(ARTIFACT_GCS_BUCKET)
+OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql"  # Can be local path or GCS Bucket, e.g., "gs://my-bucket/queries"
 
 # In production, the project should be set via an environment variable.
 PROJECT = os.environ.get("PROJECT_ID")
