@@ -149,9 +149,18 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
         if not utils.is_pure_variable(var):
             raise ValueError(f"Variable {var} is not pure. Please pre-process exceptions before composing the query.")
     
+    # Group loop variables
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
     
+    # Find non-loop variables (all variables except those in the grouped loop vars)
+    all_loop_vars = []
+    for var_list in grouped_loop_vars.values():
+        all_loop_vars.extend(var_list)
+    non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
+    
     select_clauses = []
+    
+    # Process loop variables
     for key, var_list in grouped_loop_vars.items():
         loop_number = key[1]
         first_var = var_list[0]
@@ -163,6 +172,10 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
         else:
             clause = f"COALESCE({', '.join(var_list)}) AS {new_var_name}"
         select_clauses.append((new_var_name, clause))
+    
+    # Add non-loop variables
+    for var in non_loop_vars:
+        select_clauses.append((var, var))
     
     sorted_clauses = sorted(select_clauses, key=lambda x: x[0])
     select_clause_strs = [clause for _, clause in sorted_clauses]
