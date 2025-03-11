@@ -10,6 +10,7 @@ from google.cloud import bigquery, storage
 import pandas as pd #TODO Try to avoid using pandas
 
 import core.utils as utils
+import core.constants as constants
 
 # Set up a logging instance that will write to stdout (and therefor show up in Google Cloud logs)
 logging.basicConfig(
