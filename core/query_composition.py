@@ -2,7 +2,8 @@
 
 from google.cloud import bigquery
 from google.cloud import storage
-from core import constants, utils
+import core.constants as constants
+import core.utils as utils
 
 def create_or_replace_table_with_outer_join(source_tables: list[str], destination_table: str) -> dict:
     """
