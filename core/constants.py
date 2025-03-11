@@ -7,7 +7,7 @@ from enum import Enum
 
 SERVICE_NAME = "pr2-transformation"
 ARTIFACT_GCS_BUCKET = os.environ.get('ARTIFACT_GCS_BUCKET')
-OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql/"  # Can be local path or GCS Bucket, e.g., "gs://my-bucket/queries"
+OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql/" 
 
 # In production, the project should be set via an environment variable.
 PROJECT = os.environ.get("PROJECT_ID")
@@ -23,9 +23,9 @@ ALLOWED_NON_CID_SUBSTRINGS = [
 #       These inconsistencies must be addressed by DevOps or critical data will be dropped.
 
 # Datasets for the different stages of your ETL pipeline.
-SOURCE_DATASET = "FlatConnect"
-STAGING_DATASET = "ForTestingOnly"
-CLEAN_DATASET = "CleanConnect"
+# SOURCE_DATASET = "FlatConnect"
+# STAGING_DATASET = "ForTestingOnly"
+# CLEAN_DATASET = "CleanConnect"
 
 # # -----------------------------------------------------------------------------
 # # Custom Base Enum

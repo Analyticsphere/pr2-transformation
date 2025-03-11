@@ -113,7 +113,7 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
 
     # Use the constant from constants.py for the SQL output path.
     gcs_client = storage.Client()
-    gcs_path = f"{constants.OUTPUT_SQL_PATH}/{destination_table}.sql"
+    gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
     utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
 
     return {
@@ -187,7 +187,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
 
     # Use the constant from constants.py for the SQL output path.
     gcs_client = storage.Client()
-    gcs_path = f"{constants.OUTPUT_SQL_PATH}/{destination_table}.sql"
+    gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
 
     utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
 
