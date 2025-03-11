@@ -23,7 +23,7 @@ steps:
     '--cpu=2', '--memory=4Gi',
     '--region=us-central1',
     '--service-account=$SERVICE_ACCOUNT_EMAIL', # Directly use the substitution variable
-    '--set-env-vars=PROJECT_ID=$PROJECT_ID,COMMIT_SHA=$COMMIT_SHA',
+    '--set-env-vars=PROJECT_ID=$PROJECT_ID,COMMIT_SHA=$COMMIT_SHA',ARTIFACT_GCS_BUCKET=$ARTIFACT_GCS_BUCKET
     '--concurrency=1',
     '--timeout=3600',
     '--execution-environment=gen2',
