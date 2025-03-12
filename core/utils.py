@@ -9,7 +9,8 @@ from collections import defaultdict
 from google.cloud import bigquery, storage
 import pandas as pd #TODO Try to avoid using pandas
 
-import constants
+import core.utils as utils
+import core.constants as constants
 
 # Set up a logging instance that will write to stdout (and therefor show up in Google Cloud logs)
 logging.basicConfig(
@@ -111,10 +112,11 @@ def is_pure_variable(var: str) -> bool:
         >>> is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4")
         False
     """
+   
     allowed_var_names = constants.ALLOWED_NON_CID_VARIABLE_NAMES
     allowed_extras = constants.ALLOWED_NON_CID_SUBSTRINGS
     
-    if var in allowed_var_names:
+    if var.lower() in allowed_var_names:
         return True
     
     tokens = var.split('_')
@@ -129,7 +131,7 @@ def is_pure_variable(var: str) -> bool:
         if token.isdigit():
             continue
         # Allow additional allowed tokens
-        if token in allowed_extras:
+        if token.lower() in allowed_extras:
             continue
         # Otherwise, token is not allowed
         return False
@@ -158,8 +160,11 @@ def extract_loop_number(var_name: str) -> int:
     Returns:
         int: The identified loop number, or None if no valid pattern is found.
     """
-    match = re.search(r'_(\d)\_\1(?!\d)', var_name)
-    return int(match.group(1)) if match else None
+    match = re.search(r'_(\d+)\_\1(?!\d)', var_name)
+    if match:
+        return int(match.group(1))
+    
+    return None
 
 def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
     """
