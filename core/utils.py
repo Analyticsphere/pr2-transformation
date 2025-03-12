@@ -58,8 +58,9 @@ def save_sql_string(sql: str, path: str, storage_client: storage.Client = None) 
     """
     if path.startswith("gs://"):
         # Remove the gs:// scheme and split bucket name from the rest of the path.
-        path_without_scheme = path[5:]
-        parts = path_without_scheme.split("/", 1)
+        path_without_scheme = path.replace('gs://', '')
+        # Split into two parts: (1) bucket_name and (2) Everything after the first '/' (i.e., the blob_path)
+        parts = path_without_scheme.split(sep='/', maxsplit=1)
         if len(parts) != 2:
             raise ValueError("GCS path must be in the format gs://bucket_name/path/to/file")
         bucket_name, blob_path = parts[0], parts[1]
@@ -217,3 +218,5 @@ def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
 
     return dict(grouped_vars)
 
+if __name__ == '__main__':
+    print(is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4"))
