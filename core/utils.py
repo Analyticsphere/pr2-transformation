@@ -130,7 +130,7 @@ def is_pure_variable(var: str) -> bool:
         if token.isdigit():
             continue
         # Allow additional allowed tokens
-        if token in allowed_extras:
+        if token.lower() in allowed_extras:
             continue
         # Otherwise, token is not allowed
         return False

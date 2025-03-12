@@ -15,10 +15,10 @@ PROJECT = os.environ.get("PROJECT_ID")
 # Allowable string patterns in variable names that are not 9-digit concept IDs (i.e., CIDs)
 ALLOWED_NON_CID_VARIABLE_NAMES = ['Connect_ID', 'token', 'uid']
 ALLOWED_NON_CID_SUBSTRINGS = [
-    'SIBCANC3D','CHOL','MOMCANC3D','SIBCANC3O','UF','DADCANC3K','BLOODCLOT','DEPRESS2',
-    'DADCANC3K','SIBCANC3D','HTN','APPEND','TUBLIG','TONSILS','BREASTDIS','DM2', 'num',
-    'provided','string','entity','date', 'V2', 'sha'
-    ] 
+    'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
+    'dadcanc3k', 'sibcanc3d', 'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2', 'num',
+    'provided', 'string', 'entity', 'date', 'v2', 'sha'
+]
 # NOTE: 'num', 'string', 'integer' and 'provided' are key words that indicate data type inconsistencies upstream in Firestore.
 #       These inconsistencies must be addressed by DevOps or critical data will be dropped.
 
