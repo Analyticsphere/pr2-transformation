@@ -159,8 +159,11 @@ def extract_loop_number(var_name: str) -> int:
     Returns:
         int: The identified loop number, or None if no valid pattern is found.
     """
-    match = re.search(r'_(\d)\_\1(?!\d)', var_name)
-    return int(match.group(1)) if match else None
+    match = re.search(r'_(\d+)\_\1(?!\d)', var_name)
+    if match:
+        return int(match.group(1))
+    
+    return None
 
 def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
     """
