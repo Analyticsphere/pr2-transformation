@@ -143,7 +143,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     project, _, _ = utils.parse_fq_table(source_table)
     client = bigquery.Client(project=project)
     
-    variables = utils.get_column_names(client, source_table).lower()
+    variables = utils.get_column_names(client, source_table)
     
     for var in variables:
         if not utils.is_pure_variable(var):
