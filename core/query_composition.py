@@ -144,6 +144,9 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     client = bigquery.Client(project=project)
     
     variables = utils.get_column_names(client, source_table)
+
+    # Convert all variable names to lower case except for "Connect_ID"
+    variables = [v.lower() if v != "Connect_ID" else v for v in variables]
     
     for var in variables:
         if not utils.is_pure_variable(var):
