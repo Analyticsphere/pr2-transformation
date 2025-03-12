@@ -6,10 +6,21 @@ from enum import Enum
 # -----------------------------------------------------------------------------
 
 SERVICE_NAME = "pr2-transformation"
-OUTPUT_SQL_PATH = "gs://pr2-pipeline-artifacts/sql"  # Can be local path or GCS Bucket, e.g., "gs://my-bucket/queries"
+OUTPUT_PATH = "gs://pr2-pipeline-artifacts"
+OUTPUT_SQL_PATH = f"{OUTPUT_PATH}/sql"  # Can be local path or GCS Bucket, e.g., "gs://my-bucket/queries"
 
 # In production, the project should be set via an environment variable.
 PROJECT = os.environ.get("GCP_PROJECT", "nih-nci-dceg-connect-dev")
+
+# Allowable string patterns in variable names that are not 9-digit concept IDs (i.e., CIDs)
+ALLOWED_NON_CID_VARIABLE_NAMES = ['Connect_ID', 'token', 'uid']
+ALLOWED_NON_CID_SUBSTRINGS = [
+    'SIBCANC3D','CHOL','MOMCANC3D','SIBCANC3O','UF','DADCANC3K','BLOODCLOT','DEPRESS2',
+    'DADCANC3K','SIBCANC3D','HTN','APPEND','TUBLIG','TONSILS','BREASTDIS','DM2', 'num',
+    'provided','string','entity','date', 'V2'
+    ] 
+# NOTE: 'num', 'string', 'integer' and 'provided' are key words that indicate data type inconsistencies upstream in Firestore.
+#       These inconsistencies must be addressed by DevOps or critical data will be dropped.
 
 # Datasets for the different stages of your ETL pipeline.
 SOURCE_DATASET = "FlatConnect"
@@ -115,16 +126,3 @@ TRANSFORM_CONFIG = {
     }
 }
 
-
-# -----------------------------------------------------------------------------
-# Example Usage
-# -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Iterate through the mappings of the "fix_loop_variables" transformation group.
-    print("Fix loop variables mappings:\n")
-    fix_loop_group = TRANSFORM_CONFIG["fix_loop_variables"]
-    for mapping in fix_loop_group["mappings"]:
-        print(f"\nSource Table: {mapping['source']}")
-        print(f"Destination Table: {mapping['destination']}\n")
-        print("-" * 80)
-    
