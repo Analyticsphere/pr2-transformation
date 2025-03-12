@@ -115,7 +115,7 @@ def is_pure_variable(var: str) -> bool:
     allowed_var_names = constants.ALLOWED_NON_CID_VARIABLE_NAMES
     allowed_extras = constants.ALLOWED_NON_CID_SUBSTRINGS
     
-    if var in allowed_var_names:
+    if var.lower() in allowed_var_names:
         return True
     
     tokens = var.split('_')
