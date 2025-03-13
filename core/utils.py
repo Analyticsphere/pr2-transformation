@@ -241,12 +241,11 @@ def get_list_non_cid_str_patterns(column_names):
     original_col_names = []
     
     for colname in column_names:
-        colname_lower = colname.lower()
         pattern = r'd_\d{9}(?:_\d{1,2})*'  # * allows zero or more occurrences of _n_n
-        
-        cleaned_colname = re.sub(pattern, '', colname_lower).strip("_").strip()
-        if cleaned_colname and cleaned_colname != "_" and cleaned_colname != "connect_id" and cleaned_colname != "token":
-            invalid_str_params.append(cleaned_colname)
-            original_col_names.append(colname)
+        cleaned_colname = re.sub(pattern, '', colname, flags=re.IGNORECASE).strip("_").strip()
+    
+    if cleaned_colname and cleaned_colname != "_" and cleaned_colname != "connect_id" and cleaned_colname != "token":
+        invalid_str_params.append(cleaned_colname)
+        original_col_names.append(colname)
     
     return list(zip(invalid_str_params, original_col_names))
