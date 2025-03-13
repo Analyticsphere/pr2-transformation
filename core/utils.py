@@ -225,6 +225,11 @@ if __name__ == '__main__':
 def get_list_non_cid_str_patterns(column_names):
     """
     Pulls out column names that do not meet pre-defined structures and returns invalid strings with the column names they come from.
+
+     Examples:
+        D_907590067_4_4_SIBCANC3O_D_650332509_4 --> ['sibcanc3o', 'D_907590067_4_4_SIBCANC3O_D_650332509_4']
+        hello --> ['hello', 'hello']
+        d_123456789_1_1_d_987654321_1_1 --> []
     
     Args:
         column_names: a list of column names to run the code on
@@ -236,10 +241,10 @@ def get_list_non_cid_str_patterns(column_names):
     original_col_names = []
     
     for colname in column_names:
-        colname = colname.lower()
+        colname_lower = colname.lower()
         pattern = r'd_\d{9}(?:_\d{1,2})*'  # * allows zero or more occurrences of _n_n
         
-        cleaned_colname = re.sub(pattern, '', colname).strip("_").strip()
+        cleaned_colname = re.sub(pattern, '', colname_lower).strip("_").strip()
         if cleaned_colname and cleaned_colname != "_" and cleaned_colname != "connect_id" and cleaned_colname != "token":
             invalid_str_params.append(cleaned_colname)
             original_col_names.append(colname)
