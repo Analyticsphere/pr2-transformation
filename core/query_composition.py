@@ -103,6 +103,16 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
 
     final_query = f"CREATE OR REPLACE TABLE {destination_table} AS ({inner_query})"
 
+    # Save the SQL to GCS Bucket for audit purposes
+    try:
+        gcs_client = storage.Client()
+        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
+        utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
+    except Exception as e:
+        utils.logger.exception("Error executing saving query {gcs_path}.")
+        raise e
+
+    # Submit query job to BQ
     try:
         query_job = client.query(final_query)
         query_job.result()  # Wait for the query to finish.
@@ -110,11 +120,6 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
     except Exception as e:
         utils.logger.exception("Error executing the BigQuery job.")
         raise e
-
-    # Use the constant from constants.py for the SQL output path.
-    gcs_client = storage.Client()
-    gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
-    utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
 
     return {
         "status": status,
@@ -193,6 +198,16 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     
     final_query = f"CREATE OR REPLACE TABLE {destination_table} AS ({inner_query})"
     
+    # Save the SQL to GCS for Audit purposes:
+    try:
+        gcs_client = storage.Client()
+        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
+        utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
+    except Exception as e:
+        utils.logger.exception("Error executing saving query {gcs_path}.")
+        raise e
+
+    # Submit query job to BQ
     try:
         query_job = client.query(final_query)
         query_job.result()  # Wait for the query to finish.
@@ -200,12 +215,6 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     except Exception as e:
         utils.logger.exception("Error executing the BigQuery job.")
         raise e
-
-    # Use the constant from constants.py for the SQL output path.
-    gcs_client = storage.Client()
-    gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
-
-    utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
 
     return {
         "status": status,
