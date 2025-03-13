@@ -85,7 +85,7 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
     join_clauses = []
     for alias, table in zip(aliases[:-1][::-1], source_tables[:-1][::-1]):
         join_clause = (
-            f"FULL OUTER JOIN {table} {alias}\n"
+            f"FULL OUTER JOIN `{table}` {alias}\n"
             f"ON {base_alias}.Connect_ID = {alias}.Connect_ID"
         )
         join_clauses.append(join_clause)
@@ -101,7 +101,7 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
         {joined_join_clauses}
     """.strip()
 
-    final_query = f"CREATE OR REPLACE TABLE {destination_table} AS ({inner_query})"
+    final_query = f"CREATE OR REPLACE TABLE `{destination_table}` AS ({inner_query})"
 
     # Save the SQL to GCS Bucket for audit purposes
     try:
@@ -196,7 +196,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     FROM `{source_table}`
     """.strip()
     
-    final_query = f"CREATE OR REPLACE TABLE {destination_table} AS ({inner_query})"
+    final_query = f"CREATE OR REPLACE TABLE `{destination_table}` AS ({inner_query})"
     
     # Save the SQL to GCS for Audit purposes:
     try:
