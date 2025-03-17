@@ -19,6 +19,6 @@ ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id', 'token', 'uid']
 ALLOWED_NON_CID_SUBSTRINGS = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
     'dadcanc3k', 'sibcanc3d', 'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2', 'num',
-    'provided', 'string', 'entity', 'date', 'v2', 'sha'
+    'provided', 'string', 'entity', 'date', 'v2', 'sha', 'uid'
 ]
 

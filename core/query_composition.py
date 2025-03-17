@@ -167,7 +167,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
     
     select_clauses = []
-    
+
     # Process loop variables
     for key, var_list in grouped_loop_vars.items():
         loop_number = key[1]

@@ -218,5 +218,30 @@ def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
 
     return dict(grouped_vars)
 
-if __name__ == '__main__':
-    print(is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4"))
+def get_list_non_cid_str_patterns(column_names):
+    """
+    Pulls out column names that do not meet pre-defined structures and returns invalid strings with the column names they come from.
+
+     Examples:
+        D_907590067_4_4_SIBCANC3O_D_650332509_4 --> ['sibcanc3o', 'D_907590067_4_4_SIBCANC3O_D_650332509_4']
+        hello --> ['hello', 'hello']
+        d_123456789_1_1_d_987654321_1_1 --> []
+    
+    Args:
+        column_names: a list of column names to run the code on
+        
+    Returns:
+        list[zip(invalid_str_params, original_col_names)]: A list of tuples of invalid string parameters and the column names they are pulled from.
+    """
+    invalid_str_params = []
+    original_col_names = []
+    
+    for colname in column_names:
+        pattern = r'd_\d{9}(?:_\d{1,2})*'  # * allows zero or more occurrences of _n_n
+        cleaned_colname = re.sub(pattern, '', colname, flags=re.IGNORECASE).strip("_").strip()
+    
+    if cleaned_colname and cleaned_colname != "_" and cleaned_colname != "connect_id" and cleaned_colname != "token":
+        invalid_str_params.append(cleaned_colname)
+        original_col_names.append(colname)
+    
+    return list(zip(invalid_str_params, original_col_names))
