@@ -31,7 +31,7 @@ def parse_fq_table(fq_table: str) -> tuple[str, str, str]:
         raise ValueError(f"Table name '{fq_table}' is not fully qualified as project.dataset.table")
     return parts[0], parts[1], parts[2]
 
-def get_column_names(client, fq_table: str) -> list[str]:
+def get_column_names(client: bigquery.Client, fq_table: str) -> list[str]:
     """
     Retrieves column names from a BigQuery table specified as a fully qualified name.
     
@@ -239,7 +239,7 @@ def get_list_non_cid_str_patterns(column_names):
     
     return list(zip(invalid_str_params, original_col_names))
 
-def get_column_exceptions_to_exclude(client, fq_table: str) -> list:
+def get_column_exceptions_to_exclude(client: bigquery.Client, fq_table: str) -> list:
     """
     Retrieve a list of column names to exclude from the table based on forbidden names
     and excluded substrings.
@@ -270,7 +270,7 @@ def get_column_exceptions_to_exclude(client, fq_table: str) -> list:
     
     return columns_to_exclude
 
-def get_valid_column_names(client, fq_table: str) -> set:
+def get_valid_column_names(client: bigquery.Client, fq_table: str) -> set:
     """
     Retrieves valid column names by removing excluded columns from all columns.
     
@@ -284,4 +284,4 @@ def get_valid_column_names(client, fq_table: str) -> set:
     columns_all = get_column_names(client=client, fq_table=fq_table)
     columns_exclude = get_column_exceptions_to_exclude(client=client, fq_table=fq_table)
     valid_columns = set(columns_all) - set(columns_exclude)
-    return valid_columns
+    return list(valid_columns)
