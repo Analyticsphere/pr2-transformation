@@ -32,7 +32,7 @@ SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
 SUBSTRINGS_MISSNAMED = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
     'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2',
-    '2u25_20required' 
+    '20required' 
 ]
 
 # Combine all substring lists, removing duplicates
