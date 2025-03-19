@@ -12,13 +12,35 @@ OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql/"
 # In production, the project should be set via an environment variable.
 PROJECT = os.environ.get("PROJECT_ID")
 
+# ------------------------------------------------------------------------------
+# Define substring categories for filtering ETL column names
+# ------------------------------------------------------------------------------
+
 # Allowable string patterns in variable names that are not 9-digit concept IDs (i.e., CIDs)
-# NOTE: 'num', 'string', 'integer' and 'provided' are key words that indicate data type 
-#       inconsistencies upstream in Firestore. These inconsistencies must be addressed by DevOps.
-ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id', 'token', 'uid']
-ALLOWED_NON_CID_SUBSTRINGS = [
+ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
+
+# Forbidden variable names that will be dropped because they lack research value
+FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha'] 
+
+# Substrings that need fixing (future updates; drop columns for now)
+SUBSTRINGS_TO_FIX = ['num', 'v2']
+
+# Substrings indicating datatype conflicts (to be fixed upstream in Firestore; drop columns for now)
+SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
+
+# Substrings indicating misnamed variables (exclude permanently from ETL; will be addressed upstream in Firestore)
+SUBSTRINGS_MISSNAMED = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
-    'dadcanc3k', 'sibcanc3d', 'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2', 'num',
-    'provided', 'string', 'entity', 'date', 'v2', 'sha', 'uid'
+    'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2'
 ]
+
+# Combine all substring lists, removing duplicates
+EXCLUDED_NON_CID_SUBSTRINGS = list(
+    SUBSTRINGS_TO_FIX +
+    SUBSTRINGS_DATATYPE_CONFLICT +
+    SUBSTRINGS_MISSNAMED
+)
+
+# Allowable non-concept id substrings
+ALLOWED_NON_CID_SUBSTRINGS = []
 
