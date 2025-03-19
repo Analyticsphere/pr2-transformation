@@ -81,7 +81,7 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
     
     base_alias = aliases[-1]
     base_table = source_tables[-1]
-    from_clause = f"{base_table} {base_alias}"
+    from_clause = f"`{base_table}` {base_alias}"
     
     join_clauses = []
     for alias, table in zip(aliases[:-1][::-1], source_tables[:-1][::-1]):
