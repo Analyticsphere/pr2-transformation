@@ -43,7 +43,8 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
     
     # Retrieve column names for each source table.
     for idx, table in enumerate(source_tables, start=1):
-        cols = utils.get_column_names(client, table)
+        # cols = utils.get_column_names(client, table)
+        cols = utils.get_valid_column_names(client=client, fq_table=table)
         if not cols:
             error_msg = f"No columns retrieved from table: {table}"
             utils.logger.error(error_msg)
@@ -148,7 +149,8 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     project, _, _ = utils.parse_fq_table(source_table)
     client = bigquery.Client(project=project)
     
-    variables = utils.get_column_names(client, source_table)
+    #variables = utils.get_column_names(client, source_table)
+    variables = utils.get_valid_column_names(client=client, fq_table=source_table)
 
     # Convert all variable names to lower case except for "Connect_ID"
     variables = [v.lower() if v != "Connect_ID" else v for v in variables]

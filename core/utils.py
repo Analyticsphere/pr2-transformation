@@ -105,18 +105,11 @@ def is_pure_variable(var: str) -> bool:
     For example:
         >>> is_pure_variable("D_869387390_11_11_D_478706011_11")
         True
-        >>> is_pure_variable("Connect_ID")
-        True
-        >>> is_pure_variable("token")
-        True
         >>> is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4")
         False
     """
-   
-    allowed_var_names = constants.ALLOWED_NON_CID_VARIABLE_NAMES
-    allowed_extras = constants.ALLOWED_NON_CID_SUBSTRINGS
     
-    if var.lower() in allowed_var_names:
+    if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower() not in constants.FORBIDDEN_NON_CID_VARIABLE_NAMES:
         return True
     
     tokens = var.split('_')
@@ -131,7 +124,7 @@ def is_pure_variable(var: str) -> bool:
         if token.isdigit():
             continue
         # Allow additional allowed tokens
-        if token.lower() in allowed_extras:
+        if token.lower() in constants.ALLOWED_NON_CID_SUBSTRINGS:
             continue
         # Otherwise, token is not allowed
         return False
@@ -245,3 +238,50 @@ def get_list_non_cid_str_patterns(column_names):
         original_col_names.append(colname)
     
     return list(zip(invalid_str_params, original_col_names))
+
+def get_column_exceptions_to_exclude(client, fq_table: str) -> list:
+    """
+    Retrieve a list of column names to exclude from the table based on forbidden names
+    and excluded substrings.
+
+    Parameters:
+        client: A database client used to query the table schema.
+        fq_table (str): Fully-qualified table name from which to retrieve column names.
+
+    Returns:
+        list: A list of column names that should be excluded from further processing.
+    """
+    # Retrieve all column names for the table
+    columns = get_column_names(client, fq_table)
+    
+    # Retrieve forbidden column names and substrings to exclude from constants
+    forbidden = constants.FORBIDDEN_NON_CID_VARIABLE_NAMES
+    excluded_substrings = constants.EXCLUDED_NON_CID_SUBSTRINGS
+    
+    columns_to_exclude = []
+    for col in columns:
+        # If the column is explicitly forbidden, mark it for exclusion.
+        if col in forbidden:
+            columns_to_exclude.append(col)
+        else:
+            # Otherwise, check if any excluded substring is present in the column name.
+            if any(sub in col for sub in excluded_substrings):
+                columns_to_exclude.append(col)
+    
+    return columns_to_exclude
+
+def get_valid_column_names(client, fq_table: str) -> set:
+    """
+    Retrieves valid column names by removing excluded columns from all columns.
+    
+    Parameters:
+        client: A database client used to query the table schema.
+        fq_table (str): Fully-qualified table name from which to retrieve column names.
+        
+    Returns:
+        set: A set of valid column names that can be used for further processing.
+    """
+    columns_all = get_column_names(client=client, fq_table=fq_table)
+    columns_exclude = get_column_exceptions_to_exclude(client=client, fq_table=fq_table)
+    valid_columns = set(columns_all) - set(columns_exclude)
+    return valid_columns
