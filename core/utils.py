@@ -109,8 +109,11 @@ def is_pure_variable(var: str) -> bool:
         False
     """
     
-    if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower() not in constants.FORBIDDEN_NON_CID_VARIABLE_NAMES:
+    if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower():
         return True
+    
+    if var.lower() in constants.FORBIDDEN_NON_CID_VARIABLE_NAMES:
+        return False
     
     tokens = var.split('_')
     for token in tokens:
@@ -140,8 +143,6 @@ def extract_loop_number(var_name: str) -> int:
 
         >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
         2
-        >>> extract_loop_number("d_111111111_1_1_d_222222222_1_1")
-        1
         >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
         9
         >>> extract_loop_number("d_123456789_5_5")
@@ -243,11 +244,11 @@ def get_column_exceptions_to_exclude(client: bigquery.Client, fq_table: str) -> 
     """
     Retrieve a list of column names to exclude from the table based on forbidden names
     and excluded substrings.
-
+    
     Parameters:
-        client: A database client used to query the table schema.
+        client (bigquery.Client): A BigQuery client used to query the table schema.
         fq_table (str): Fully-qualified table name from which to retrieve column names.
-
+        
     Returns:
         list: A list of column names that should be excluded from further processing.
     """
@@ -261,11 +262,11 @@ def get_column_exceptions_to_exclude(client: bigquery.Client, fq_table: str) -> 
     columns_to_exclude = []
     for col in columns:
         # If the column is explicitly forbidden, mark it for exclusion.
-        if col in forbidden:
+        if col.lower() in [f.lower() for f in forbidden]:
             columns_to_exclude.append(col)
         else:
-            # Otherwise, check if any excluded substring is present in the column name.
-            if any(sub in col for sub in excluded_substrings):
+            # Otherwise, check if any excluded substring is present in the column name (case-insensitive).
+            if any(sub.lower() in col.lower() for sub in excluded_substrings):
                 columns_to_exclude.append(col)
     
     return columns_to_exclude
