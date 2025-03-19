@@ -31,7 +31,8 @@ SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
 # Substrings indicating misnamed variables (exclude permanently from ETL; will be addressed upstream in Firestore)
 SUBSTRINGS_MISSNAMED = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
-    'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2'
+    'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2',
+    '2u25_20required' 
 ]
 
 # Combine all substring lists, removing duplicates
