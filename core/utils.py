@@ -93,6 +93,42 @@ def extract_ordered_concept_ids(var: str) -> list:
     pattern = re.compile(r'[dD]_(\d{9})')
     return pattern.findall(var)
 
+def find_non_standard_concept_ids(column_names: list) -> list:
+    """
+    Identifies column names with concept IDs that don't follow the 9-digit standard.
+    
+    Args:
+        column_names: List of column names to check
+        
+    Returns:
+        list: Column names with non-standard concept IDs
+    """
+    non_standard = []
+    for col in column_names:
+        # Check for the pattern d_ or D_ followed by digits that aren't exactly 9 characters
+        matches = re.findall(r'[dD]_(\d+)(?=_|$)', col)
+        for match in matches:
+            if len(match) != 9:
+                non_standard.append((col, match, len(match)))
+    
+    return non_standard
+
+def validate_column_names(client: bigquery.Client, fq_table: str) -> None:
+    """
+    Validates column names in the table to ensure they follow naming standards.
+    Raises a warning for non-standard columns.
+    """
+    columns = get_column_names(client, fq_table)
+    non_standard = find_non_standard_concept_ids(columns)
+    
+    if non_standard:
+        utils.logger.warning(f"Found {len(non_standard)} columns with non-standard concept IDs:")
+        for col, concept_id, length in non_standard:
+            utils.logger.warning(f"  - {col}: Concept ID '{concept_id}' has {length} digits (should be 9)")
+        
+        # Optionally, we could raise an exception to halt the pipeline
+        # raise ValueError("Non-standard concept IDs found. Please fix the source data.")
+
 def is_pure_variable(var: str) -> bool:
     """
     Returns True if the variable name is "pure"—i.e. it only consists of allowed tokens.
