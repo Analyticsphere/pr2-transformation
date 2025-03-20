@@ -199,6 +199,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
         ordered_ids = utils.extract_ordered_concept_ids(cleaned_first_var)
         
         # Use the version suffix in the new variable name
+        # Move version_suffix to the end and ensure only one loop number
         new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}{version_suffix}"
         
         if len(var_list) == 1:
