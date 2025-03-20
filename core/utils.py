@@ -160,66 +160,91 @@ def extract_loop_number(var_name: str) -> int:
     
     return None
 
-def excise_v2_from_column_name(column_name: str) -> str:
+def extract_version_suffix(var_name: str) -> str:
     """
-    Removes only the '_V2' segment from column names while preserving the rest.
+    Extracts the version suffix (like _v2, _v3) from a variable name.
+    
+    Returns the version suffix if found, or an empty string if no version is present.
+    
+    Examples:
+        >>> extract_version_suffix("d_123456789_v2_1_1")
+        "_v2"
+        >>> extract_version_suffix("d_123456789_V3_1_1")
+        "_v3"
+        >>> extract_version_suffix("d_123456789_1_1")
+        ""
+    """
+    match = re.search(r'_[vV](\d+)', var_name)
+    if match:
+        return f"_v{match.group(1)}"
+    return ""
+
+def extract_version_suffix(var_name: str) -> str:
+    """
+    Extracts the version suffix (like _v2, _v3) from a variable name.
+    
+    Returns the version suffix if found, or an empty string if no version is present.
+    
+    Examples:
+        >>> extract_version_suffix("d_123456789_v2_1_1")
+        "_v2"
+        >>> extract_version_suffix("d_123456789_V3_1_1")
+        "_v3"
+        >>> extract_version_suffix("d_123456789_1_1")
+        ""
+    """
+    match = re.search(r'_[vV](\d+)', var_name)
+    if match:
+        return f"_v{match.group(1)}"
+    return ""
+
+def excise_version_from_column_name(column_name: str) -> str:
+    """
+    Removes version suffixes (_v1, _v2, _v3, etc.) from column names while preserving the rest.
     
     Examples:
     - D_191057574_V2 → D_191057574
-    - D_715581797_V2_1_1 → D_715581797_1_1
+    - D_715581797_V3_1_1 → D_715581797_1_1
     - D_899251483_V2_D_452438775 → D_899251483_D_452438775
     
     Parameters:
-        column_name (str): Original column name with V2 segment
+        column_name (str): Original column name with version suffix
         
     Returns:
-        str: Cleaned column name with V2 segment removed
+        str: Cleaned column name with version suffix removed
     """
-    # Use regex to find and remove the _V2 part while preserving everything else
-    # This pattern looks for _V2 (case insensitive) that occurs between two underscores
-    # or at the end of the string
-    return re.sub(r'_[vV]2(?=_|$)', '', column_name)
+    # Use regex to find and remove the _vN part where N is any digit
+    return re.sub(r'_[vV]\d+(?=_|$)', '', column_name)
 
 def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
     """
-    Groups variable names that share the same concept IDs and the same loop number,
-    ignoring '_V2' or '_v2' segments in the names.
-    
-    Each key in the output dictionary is a tuple (concept_ids, loop_number), where:
+    Groups variable names that share the same concept IDs, loop number, and version.
+
+    Each key in the output dictionary is a tuple (concept_ids, loop_number, version_suffix), where:
     - `concept_ids` is a **frozenset** of unique concept IDs extracted from the variable name.
     - `loop_number` is the repeated integer (N) following `_N_N` (if present).
+    - `version_suffix` is the version suffix (e.g., "_v2", "_v3") or empty string for no version.
     
     Only variables with a valid loop number (N) are included.
-    
-    Examples:
-    >>> var_list = [
-    ... "d_123456789_1_1_d_987654321_1_1",
-    ... "d_123456789_v2_1_1_d_987654321_1_1",  # With '_v2'
-    ... "d_123456789_9_9_d_987654321_9_9", 
-    ... "d_123456789_9_9_d_987654321_9_9_9_9_9_9",  # Complex pattern with extra _n's
-    ... "d_123456789_V2_9_9_d_987654321_9_9",  # With '_V2'
-    ... "d_123456789_5_5",
-    ... "d_123456789_V2_5_5",                  # With '_V2'
-    ... "d_123456789"                          # No loop number, should be ignored
-    ... ]
-    >>> grouped_vars = group_vars_by_cid_and_loop_num(var_list)
-    >>> for key, vars in grouped_vars.items():
-    ... concept_ids, loop_number = key
-    ... print(f"Concept IDs: {sorted(concept_ids)}, Loop Number: {loop_number}, Variables: {vars}")
-    
-    Output:
-    Concept IDs: ['123456789', '987654321'], Loop Number: 1, Variables: ['d_123456789_1_1_d_987654321_1_1', 'd_123456789_v2_1_1_d_987654321_1_1']
-    Concept IDs: ['123456789', '987654321'], Loop Number: 9, Variables: ['d_123456789_9_9_d_987654321_9_9', 'd_123456789_9_9_d_987654321_9_9_9_9_9_9', 'd_123456789_V2_9_9_d_987654321_9_9']
-    Concept IDs: ['123456789'], Loop Number: 5, Variables: ['d_123456789_5_5', 'd_123456789_V2_5_5']
-    
-    Args:
-        var_names (list): A list of variable names.
-        
-    Returns:
-        dict: A dictionary where keys are tuples (frozenset(concept_ids), loop_number),
-        and values are lists of variable names that match the criteria.
     """
     grouped_vars = defaultdict(list)
+    
+    for var in var_names:
+        # Extract the version suffix
+        version_suffix = extract_version_suffix(var)
+        
+        # Clean the variable name to extract concept IDs
+        cleaned_var = excise_version_from_column_name(var)
+        
+        # Extract concept IDs and loop number from the cleaned variable name
+        concept_ids = frozenset(extract_ordered_concept_ids(cleaned_var))
+        loop_number = extract_loop_number(cleaned_var)
+        
+        if concept_ids and loop_number is not None:  # Only include loop variables
+            # Include version_suffix in the grouping key
+            grouped_vars[(concept_ids, loop_number, version_suffix)].append(var)
+    
+    return dict(grouped_vars)
     
     for var in var_names:
         # Clean the variable name by removing '_V2' segments

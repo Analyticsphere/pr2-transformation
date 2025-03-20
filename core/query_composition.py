@@ -133,6 +133,23 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     Generates and executes a SQL statement to coalesce multiple versions of loop variables,
     creating or replacing a destination table in BigQuery, and saves the SQL to a constant path.
     
+    Examples:
+        Input variables -> Output columns
+        
+        # Basic loop variable
+        d_123456789_1_1 -> d_123456789_1
+        
+        # Multiple variables with same concept IDs and loop number (coalesced)
+        d_123456789_2_2, D_123456789_2_2_2_2 -> 
+            COALESCE(d_123456789_2_2, D_123456789_2_2_2_2) AS d_123456789_2
+        
+        # Version handling (separate columns)
+        d_123456789_1_1, d_123456789_v2_1_1 -> 
+            d_123456789_1, d_123456789_1_v2
+        
+        # Multiple concept IDs
+        d_123456789_3_3_d_987654321_3_3 -> d_123456789_d_987654321_3
+    
     Args:
         source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
         destination_table (str): A fully qualified BigQuery table to create or replace.
@@ -172,17 +189,24 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
 
     # Process loop variables
     for key, var_list in grouped_loop_vars.items():
-        loop_number = key[1]
+        concept_ids, loop_number, version_suffix = key
+        
+        # Get the first variable for reference
         first_var = var_list[0]
-        ordered_ids = utils.extract_ordered_concept_ids(first_var)
-        new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}"
+        
+        # Extract ordered concept IDs for naming
+        cleaned_first_var = utils.excise_version_from_column_name(first_var)
+        ordered_ids = utils.extract_ordered_concept_ids(cleaned_first_var)
+        
+        # Use the version suffix in the new variable name
+        new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}{version_suffix}"
         
         if len(var_list) == 1:
             clause = f"{var_list[0]} AS {new_var_name}"
         else:
             clause = f"COALESCE({', '.join(var_list)}) AS {new_var_name}"
         select_clauses.append((new_var_name, clause))
-    
+        
     # Add non-loop variables
     for var in non_loop_vars:
         select_clauses.append((var, var))
