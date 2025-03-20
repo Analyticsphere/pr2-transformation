@@ -191,16 +191,14 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     for key, var_list in grouped_loop_vars.items():
         concept_ids, loop_number, version_suffix = key
         
-        # Get the first variable for reference
+        # Get the first variable for reference - only needed for concept ID ordering
         first_var = var_list[0]
         
-        # Extract loop number and version
-        version_suffix = utils.extract_version_suffix(first_var)
+        # Use the cleaned version (without version suffix) to get ordered concept IDs
         cleaned_var = utils.excise_version_from_column_name(first_var)
         ordered_ids = utils.extract_ordered_concept_ids(cleaned_var)
-        loop_number = utils.extract_loop_number(first_var)
-
-        # Construct new variable name with version at the end
+        
+        # Construct new variable name with already extracted loop_number and version_suffix
         new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         
         if len(var_list) == 1:
