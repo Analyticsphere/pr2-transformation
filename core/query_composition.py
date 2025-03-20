@@ -168,11 +168,11 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     
     #variables = utils.get_column_names(client, source_table)
     variables = utils.get_valid_column_names(client=client, fq_table=source_table)
-    utils.logger.info(f"Processing {len(variables)} total variables")
 
     # Convert all variable names to lower case except for "Connect_ID"
     variables = [v.lower() if v != "Connect_ID" else v for v in variables]
-    
+    utils.logger.info(f"Processing {len(variables)} total variables")
+
     for var in variables:
         if not utils.is_pure_variable(var):
             raise ValueError(f"Variable {var} is not pure. Please pre-process exceptions before composing the query.")
@@ -181,8 +181,14 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
     utils.logger.info(f"Found {len(grouped_loop_vars)} unique loop variable groups")
     utils.logger.info(f"Grouped {len(all_loop_vars)} loop variables")
-
-    ## DEBUG PROBLEM PATTERNS ##
+    
+    # Find non-loop variables (all variables except those in the grouped loop vars)
+    all_loop_vars = []
+    for var_list in grouped_loop_vars.values():
+        all_loop_vars.extend(var_list)
+    non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
+    
+    ###DEBUG###########################################################################
     # Add specific debugging for problematic patterns
     problem_patterns = [v for v in variables if 'v2_5_5' in v.lower()]
     if problem_patterns:
@@ -191,14 +197,8 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
             version = utils.extract_version_suffix(pp)
             loop_num = utils.extract_loop_number(pp)
             utils.logger.info(f"  - {pp}: version={version}, loop_num={loop_num}")
-    ##############################
+    #####################################################################################
 
-    # Find non-loop variables (all variables except those in the grouped loop vars)
-    all_loop_vars = []
-    for var_list in grouped_loop_vars.values():
-        all_loop_vars.extend(var_list)
-    non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
-    
     select_clauses = []
 
     # Process loop variables
