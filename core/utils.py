@@ -139,64 +139,9 @@ def is_pure_variable(var: str) -> bool:
         return False
     return True
 
-def extract_loop_number(var_name: str) -> int:
-    """
-    Extracts the loop number (N) from a variable name.
-
-    The loop number appears as a repeated digit `_N_N` following a concept ID.
-
-    Examples:
-
-        >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
-        2
-        >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
-        9
-        >>> extract_loop_number("d_123456789_5_5")
-        5
-
-    Args:
-        var_name (str): The variable name containing the loop number.
-
-    Returns:
-        int: The identified loop number, or None if no valid pattern is found.
-    """
-        # First remove version suffixes to simplify pattern matching
-    cleaned_var = excise_version_from_column_name(var_name)
-    
-    # Now look for the loop pattern
-    match = re.search(r'_(\d+)\_\1(?!\d)', cleaned_var)
-    if match:
-        return int(match.group(1))
-    
-    # Check for single loop numbers (e.g., d_123456789_5)
-    match = re.search(r'_(\d+)$', cleaned_var)
-    if match:
-        return int(match.group(1))
-    
-    return None
-
 def extract_version_suffix(var_name: str) -> str:
     """
-    Extracts the version suffix (like _v2, _v3) from a variable name.
-    
-    Returns the version suffix if found, or an empty string if no version is present.
-    
-    Examples:
-        >>> extract_version_suffix("d_123456789_v2_1_1")
-        "_v2"
-        >>> extract_version_suffix("d_123456789_V3_1_1")
-        "_v3"
-        >>> extract_version_suffix("d_123456789_1_1")
-        ""
-    """
-    match = re.search(r'_[vV](\d+)', var_name)
-    if match:
-        return f"_v{match.group(1)}"
-    return ""
-
-def extract_version_suffix(var_name: str) -> str:
-    """
-    Extracts the version suffix (like _v2, _v3) from a variable name, reguardless of position
+    Extracts the version suffix (like _v2, _v3) from a variable name, regardless of position
     
     Returns the version suffix if found, or an empty string if no version is present.
     
@@ -216,7 +161,7 @@ def extract_version_suffix(var_name: str) -> str:
 def excise_version_from_column_name(column_name: str) -> str:
     """
     Removes version suffixes (_v1, _v2, _v3, etc.) from column names while preserving 
-    the rest. This works reguardless of the position of _vN.
+    the rest. This works regardless of the position of _vN.
     
     Examples:
     - D_191057574_V2 → D_191057574
@@ -231,6 +176,42 @@ def excise_version_from_column_name(column_name: str) -> str:
     """
     # Use regex to find and remove the _vN part where N is any digit
     return re.sub(r'_[vV]\d+(?=_|$)', '', column_name)
+
+def extract_loop_number(var_name: str) -> int:
+    """
+    Extracts the loop number (N) from a variable name.
+    Handles variables with version suffixes in any position.
+
+    Examples:
+        >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
+        2
+        >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
+        9
+        >>> extract_loop_number("d_123456789_5_5")
+        5
+        >>> extract_loop_number("d_71558179_v2_5_5")
+        5
+
+    Args:
+        var_name (str): The variable name containing the loop number.
+
+    Returns:
+        int: The identified loop number, or None if no valid pattern is found.
+    """
+    # First remove version suffixes to simplify pattern matching
+    cleaned_var = excise_version_from_column_name(var_name)
+    
+    # Now look for the loop pattern
+    match = re.search(r'_(\d+)\_\1(?!\d)', cleaned_var)
+    if match:
+        return int(match.group(1))
+    
+    # Check for single loop numbers (e.g., d_123456789_5)
+    match = re.search(r'_(\d+)$', cleaned_var)
+    if match:
+        return int(match.group(1))
+    
+    return None
 
 def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
     """
@@ -254,25 +235,11 @@ def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
         
         # Extract concept IDs and loop number from the cleaned variable name
         concept_ids = frozenset(extract_ordered_concept_ids(cleaned_var))
-        loop_number = extract_loop_number(cleaned_var)
+        loop_number = extract_loop_number(var)
         
         if concept_ids and loop_number is not None:  # Only include loop variables
             # Include version_suffix in the grouping key
             grouped_vars[(concept_ids, loop_number, version_suffix)].append(var)
-    
-    return dict(grouped_vars)
-    
-    for var in var_names:
-        # Clean the variable name by removing '_V2' segments
-        cleaned_var = excise_v2_from_column_name(var)
-        
-        # Extract concept IDs and loop number from the cleaned variable name
-        concept_ids = frozenset(extract_ordered_concept_ids(cleaned_var))
-        loop_number = extract_loop_number(cleaned_var)
-        
-        if concept_ids and loop_number is not None:  # Only include loop variables
-            # Store the ORIGINAL variable name (not the cleaned one)
-            grouped_vars[(concept_ids, loop_number)].append(var)
     
     return dict(grouped_vars)
 
