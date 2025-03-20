@@ -160,7 +160,16 @@ def extract_loop_number(var_name: str) -> int:
     Returns:
         int: The identified loop number, or None if no valid pattern is found.
     """
-    match = re.search(r'_(\d+)\_\1(?!\d)', var_name)
+        # First remove version suffixes to simplify pattern matching
+    cleaned_var = excise_version_from_column_name(var_name)
+    
+    # Now look for the loop pattern
+    match = re.search(r'_(\d+)\_\1(?!\d)', cleaned_var)
+    if match:
+        return int(match.group(1))
+    
+    # Check for single loop numbers (e.g., d_123456789_5)
+    match = re.search(r'_(\d+)$', cleaned_var)
     if match:
         return int(match.group(1))
     
@@ -187,7 +196,7 @@ def extract_version_suffix(var_name: str) -> str:
 
 def extract_version_suffix(var_name: str) -> str:
     """
-    Extracts the version suffix (like _v2, _v3) from a variable name.
+    Extracts the version suffix (like _v2, _v3) from a variable name, reguardless of position
     
     Returns the version suffix if found, or an empty string if no version is present.
     
@@ -199,14 +208,15 @@ def extract_version_suffix(var_name: str) -> str:
         >>> extract_version_suffix("d_123456789_1_1")
         ""
     """
-    match = re.search(r'_[vV](\d+)', var_name)
+    match = re.search(r'_[vV](\d+)(?=_|$)', var_name)
     if match:
         return f"_v{match.group(1)}"
     return ""
 
 def excise_version_from_column_name(column_name: str) -> str:
     """
-    Removes version suffixes (_v1, _v2, _v3, etc.) from column names while preserving the rest.
+    Removes version suffixes (_v1, _v2, _v3, etc.) from column names while preserving 
+    the rest. This works reguardless of the position of _vN.
     
     Examples:
     - D_191057574_V2 → D_191057574
