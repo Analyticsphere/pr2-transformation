@@ -180,12 +180,13 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     # Group loop variables
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
     utils.logger.info(f"Found {len(grouped_loop_vars)} unique loop variable groups")
-    utils.logger.info(f"Grouped {len(all_loop_vars)} loop variables")
     
+
     # Find non-loop variables (all variables except those in the grouped loop vars)
     all_loop_vars = []
     for var_list in grouped_loop_vars.values():
         all_loop_vars.extend(var_list)
+    utils.logger.info(f"Grouped {len(all_loop_vars)} loop variables")
     non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
     
     ###DEBUG###########################################################################
