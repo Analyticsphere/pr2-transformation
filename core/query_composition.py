@@ -168,6 +168,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     
     #variables = utils.get_column_names(client, source_table)
     variables = utils.get_valid_column_names(client=client, fq_table=source_table)
+    utils.logger.info(f"Processing {len(variables)} total variables")
 
     # Convert all variable names to lower case except for "Connect_ID"
     variables = [v.lower() if v != "Connect_ID" else v for v in variables]
@@ -178,7 +179,20 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     
     # Group loop variables
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
-    
+    utils.logger.info(f"Found {len(grouped_loop_vars)} unique loop variable groups")
+    utils.logger.info(f"Grouped {len(all_loop_vars)} loop variables")
+
+    ## DEBUG PROBLEM PATTERNS ##
+    # Add specific debugging for problematic patterns
+    problem_patterns = [v for v in variables if 'v2_5_5' in v.lower()]
+    if problem_patterns:
+        utils.logger.info(f"Found problematic patterns: {problem_patterns}")
+        for pp in problem_patterns:
+            version = utils.extract_version_suffix(pp)
+            loop_num = utils.extract_loop_number(pp)
+            utils.logger.info(f"  - {pp}: version={version}, loop_num={loop_num}")
+    ##############################
+
     # Find non-loop variables (all variables except those in the grouped loop vars)
     all_loop_vars = []
     for var_list in grouped_loop_vars.values():

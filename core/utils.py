@@ -179,34 +179,46 @@ def excise_version_from_column_name(column_name: str) -> str:
 
 def extract_loop_number(var_name: str) -> int:
     """
-    Extracts the loop number (N) from a variable name.
-    Handles variables with version suffixes in any position.
-
+    Extracts the loop number from a variable name, with special handling for 
+    version markers in the middle.
+    
     Examples:
-        >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
-        2
-        >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
-        9
-        >>> extract_loop_number("d_123456789_5_5")
-        5
+        # Case 1: Version in the middle followed by loop pattern
         >>> extract_loop_number("d_71558179_v2_5_5")
         5
-
+        >>> extract_loop_number("d_71558179_V2_10_10")
+        10
+        
+        # Case 2: Standard loop pattern without version in the middle
+        >>> extract_loop_number("d_123456789_3_3")
+        3
+        >>> extract_loop_number("d_123456789_3_3_d_987654321_3_3")
+        3
+        
+        # Case 3: Single number at the end (already cleaned of versions)
+        >>> extract_loop_number("d_123456789_4")
+        4
+    
     Args:
         var_name (str): The variable name containing the loop number.
 
     Returns:
         int: The identified loop number, or None if no valid pattern is found.
     """
+    # Case 1: Special case for patterns like d_71558179_v2_5_5
+    match = re.search(r'_v\d+_(\d+)_\1(?!\d)', var_name, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    
     # First remove version suffixes to simplify pattern matching
     cleaned_var = excise_version_from_column_name(var_name)
     
-    # Now look for the loop pattern
+    # Case 2: Regular pattern for variables without versions in the middle
     match = re.search(r'_(\d+)\_\1(?!\d)', cleaned_var)
     if match:
         return int(match.group(1))
     
-    # Check for single loop numbers (e.g., d_123456789_5)
+    # Case 3: Check for single loop numbers
     match = re.search(r'_(\d+)$', cleaned_var)
     if match:
         return int(match.group(1))
