@@ -31,7 +31,7 @@ def parse_fq_table(fq_table: str) -> tuple[str, str, str]:
         raise ValueError(f"Table name '{fq_table}' is not fully qualified as project.dataset.table")
     return parts[0], parts[1], parts[2]
 
-def get_column_names(client, fq_table: str) -> list[str]:
+def get_column_names(client: bigquery.Client, fq_table: str) -> list[str]:
     """
     Retrieves column names from a BigQuery table specified as a fully qualified name.
     
@@ -105,19 +105,15 @@ def is_pure_variable(var: str) -> bool:
     For example:
         >>> is_pure_variable("D_869387390_11_11_D_478706011_11")
         True
-        >>> is_pure_variable("Connect_ID")
-        True
-        >>> is_pure_variable("token")
-        True
         >>> is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4")
         False
     """
-   
-    allowed_var_names = constants.ALLOWED_NON_CID_VARIABLE_NAMES
-    allowed_extras = constants.ALLOWED_NON_CID_SUBSTRINGS
     
-    if var.lower() in allowed_var_names:
+    if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower():
         return True
+    
+    if var.lower() in constants.FORBIDDEN_NON_CID_VARIABLE_NAMES:
+        return False
     
     tokens = var.split('_')
     for token in tokens:
@@ -131,7 +127,7 @@ def is_pure_variable(var: str) -> bool:
         if token.isdigit():
             continue
         # Allow additional allowed tokens
-        if token.lower() in allowed_extras:
+        if token.lower() in constants.ALLOWED_NON_CID_SUBSTRINGS:
             continue
         # Otherwise, token is not allowed
         return False
@@ -147,8 +143,6 @@ def extract_loop_number(var_name: str) -> int:
 
         >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
         2
-        >>> extract_loop_number("d_111111111_1_1_d_222222222_1_1")
-        1
         >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
         9
         >>> extract_loop_number("d_123456789_5_5")
@@ -218,10 +212,6 @@ def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
 
     return dict(grouped_vars)
 
-if __name__ == '__main__':
-    print(is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4"))
-
-
 def get_list_non_cid_str_patterns(column_names):
     """
     Pulls out column names that do not meet pre-defined structures and returns invalid strings with the column names they come from.
@@ -249,3 +239,50 @@ def get_list_non_cid_str_patterns(column_names):
         original_col_names.append(colname)
     
     return list(zip(invalid_str_params, original_col_names))
+
+def get_column_exceptions_to_exclude(client: bigquery.Client, fq_table: str) -> list:
+    """
+    Retrieve a list of column names to exclude from the table based on forbidden names
+    and excluded substrings.
+    
+    Parameters:
+        client (bigquery.Client): A BigQuery client used to query the table schema.
+        fq_table (str): Fully-qualified table name from which to retrieve column names.
+        
+    Returns:
+        list: A list of column names that should be excluded from further processing.
+    """
+    # Retrieve all column names for the table
+    columns = get_column_names(client, fq_table)
+    
+    # Retrieve forbidden column names and substrings to exclude from constants
+    forbidden = constants.FORBIDDEN_NON_CID_VARIABLE_NAMES
+    excluded_substrings = constants.EXCLUDED_NON_CID_SUBSTRINGS
+    
+    columns_to_exclude = []
+    for col in columns:
+        # If the column is explicitly forbidden, mark it for exclusion.
+        if col.lower() in [f.lower() for f in forbidden]:
+            columns_to_exclude.append(col)
+        else:
+            # Otherwise, check if any excluded substring is present in the column name (case-insensitive).
+            if any(sub.lower() in col.lower() for sub in excluded_substrings):
+                columns_to_exclude.append(col)
+    
+    return columns_to_exclude
+
+def get_valid_column_names(client: bigquery.Client, fq_table: str) -> set:
+    """
+    Retrieves valid column names by removing excluded columns from all columns.
+    
+    Parameters:
+        client: A database client used to query the table schema.
+        fq_table (str): Fully-qualified table name from which to retrieve column names.
+        
+    Returns:
+        set: A set of valid column names that can be used for further processing.
+    """
+    columns_all = get_column_names(client=client, fq_table=fq_table)
+    columns_exclude = get_column_exceptions_to_exclude(client=client, fq_table=fq_table)
+    valid_columns = set(columns_all) - set(columns_exclude)
+    return list(valid_columns)
