@@ -101,12 +101,15 @@ def is_pure_variable(var: str) -> bool:
       - The literal "D" (or "d")
       - Any token composed solely of digits (e.g. a 9-digit concept ID or a loop number of any length)
       - The tokens "Connect_ID" or "token" (if expected)
+      - Version indicators like "v1", "v2", "v3", etc.
     
     For example:
         >>> is_pure_variable("D_869387390_11_11_D_478706011_11")
         True
         >>> is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4")
         False
+        >>> is_pure_variable("D_299417266_v2")
+        True
     """
     
     if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower():
@@ -125,6 +128,9 @@ def is_pure_variable(var: str) -> bool:
             continue
         # Allow tokens that are entirely digits
         if token.isdigit():
+            continue
+        # Allow version indicators like v1, v2, v3, etc.
+        if token.lower().startswith('v') and token[1:].isdigit():
             continue
         # Allow additional allowed tokens
         if token.lower() in constants.ALLOWED_NON_CID_SUBSTRINGS:
