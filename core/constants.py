@@ -23,7 +23,7 @@ ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
 FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha'] 
 
 # Substrings that need fixing (future updates; drop columns for now)
-SUBSTRINGS_TO_FIX = ['num', 'v2']
+SUBSTRINGS_TO_FIX = ['num']
 
 # Substrings indicating datatype conflicts (to be fixed upstream in Firestore; drop columns for now)
 SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']

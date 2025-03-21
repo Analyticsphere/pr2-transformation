@@ -133,6 +133,23 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     Generates and executes a SQL statement to coalesce multiple versions of loop variables,
     creating or replacing a destination table in BigQuery, and saves the SQL to a constant path.
     
+    Examples:
+        Input variables -> Output columns
+        
+        # Basic loop variable
+        d_123456789_1_1 -> d_123456789_1
+        
+        # Multiple variables with same concept IDs and loop number (coalesced)
+        d_123456789_2_2, D_123456789_2_2_2_2 -> 
+            COALESCE(d_123456789_2_2, D_123456789_2_2_2_2) AS d_123456789_2
+        
+        # Version handling (separate columns)
+        d_123456789_1_1, d_123456789_v2_1_1 -> 
+            d_123456789_1, d_123456789_1_v2
+        
+        # Multiple concept IDs
+        d_123456789_3_3_d_987654321_3_3 -> d_123456789_d_987654321_3
+    
     Args:
         source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
         destination_table (str): A fully qualified BigQuery table to create or replace.
@@ -149,40 +166,52 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     project, _, _ = utils.parse_fq_table(source_table)
     client = bigquery.Client(project=project)
     
+    # At the beginning of compose_coalesce_loop_variable_query
+    utils.validate_column_names(client, source_table)
+
     #variables = utils.get_column_names(client, source_table)
     variables = utils.get_valid_column_names(client=client, fq_table=source_table)
 
     # Convert all variable names to lower case except for "Connect_ID"
     variables = [v.lower() if v != "Connect_ID" else v for v in variables]
-    
+    utils.logger.info(f"Processing {len(variables)} total variables")
+
     for var in variables:
         if not utils.is_pure_variable(var):
             raise ValueError(f"Variable {var} is not pure. Please pre-process exceptions before composing the query.")
     
     # Group loop variables
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
-    
+
     # Find non-loop variables (all variables except those in the grouped loop vars)
     all_loop_vars = []
     for var_list in grouped_loop_vars.values():
         all_loop_vars.extend(var_list)
+
     non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
-    
+
     select_clauses = []
 
     # Process loop variables
     for key, var_list in grouped_loop_vars.items():
-        loop_number = key[1]
+        concept_ids, loop_number, version_suffix = key
+        
+        # Get the first variable for reference - only needed for concept ID ordering
         first_var = var_list[0]
-        ordered_ids = utils.extract_ordered_concept_ids(first_var)
-        new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}"
+        
+        # Use the cleaned version (without version suffix) to get ordered concept IDs
+        cleaned_var = utils.excise_version_from_column_name(first_var)
+        ordered_ids = utils.extract_ordered_concept_ids(cleaned_var)
+        
+        # Construct new variable name with already extracted loop_number and version_suffix
+        new_var_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         
         if len(var_list) == 1:
             clause = f"{var_list[0]} AS {new_var_name}"
         else:
             clause = f"COALESCE({', '.join(var_list)}) AS {new_var_name}"
         select_clauses.append((new_var_name, clause))
-    
+        
     # Add non-loop variables
     for var in non_loop_vars:
         select_clauses.append((var, var))
