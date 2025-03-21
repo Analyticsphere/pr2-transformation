@@ -182,26 +182,13 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     
     # Group loop variables
     grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
-    utils.logger.info(f"Found {len(grouped_loop_vars)} unique loop variable groups")
-    
 
     # Find non-loop variables (all variables except those in the grouped loop vars)
     all_loop_vars = []
     for var_list in grouped_loop_vars.values():
         all_loop_vars.extend(var_list)
-    utils.logger.info(f"Grouped {len(all_loop_vars)} loop variables")
+
     non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
-    
-    ###DEBUG###########################################################################
-    # Add specific debugging for problematic patterns
-    problem_patterns = [v for v in variables if 'v2_5_5' in v.lower()]
-    if problem_patterns:
-        utils.logger.info(f"Found problematic patterns: {problem_patterns}")
-        for pp in problem_patterns:
-            version = utils.extract_version_suffix(pp)
-            loop_num = utils.extract_loop_number(pp)
-            utils.logger.info(f"  - {pp}: version={version}, loop_num={loop_num}")
-    #####################################################################################
 
     select_clauses = []
 
