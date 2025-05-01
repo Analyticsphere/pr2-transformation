@@ -213,9 +213,6 @@ def excise_version_from_column_name(column_name: str) -> str:
     # Use regex to find and remove the _vN part where N is any digit
     return re.sub(r'_[vV]\d+(?=_|$)', '', column_name)
 
-import re
-from collections import Counter
-
 def extract_loop_number(var_name: str) -> int:
     """
     Extracts the loop number from a variable name, accounting for version suffixes and patterns.
