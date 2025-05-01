@@ -93,6 +93,42 @@ def extract_ordered_concept_ids(var: str) -> list:
     pattern = re.compile(r'[dD]_(\d{9})')
     return pattern.findall(var)
 
+def find_non_standard_concept_ids(column_names: list) -> list:
+    """
+    Identifies column names with concept IDs that don't follow the 9-digit standard.
+    
+    Args:
+        column_names: List of column names to check
+        
+    Returns:
+        list: Column names with non-standard concept IDs
+    """
+    non_standard = []
+    for col in column_names:
+        # Check for the pattern d_ or D_ followed by digits that aren't exactly 9 characters
+        matches = re.findall(r'[dD]_(\d+)(?=_|$)', col)
+        for match in matches:
+            if len(match) != 9:
+                non_standard.append((col, match, len(match)))
+    
+    return non_standard
+
+def validate_column_names(client: bigquery.Client, fq_table: str) -> None:
+    """
+    Validates column names in the table to ensure they follow naming standards.
+    Raises a warning for non-standard columns.
+    """
+    columns = get_column_names(client, fq_table)
+    non_standard = find_non_standard_concept_ids(columns)
+    
+    if non_standard:
+        utils.logger.warning(f"Found {len(non_standard)} columns with non-standard concept IDs:")
+        for col, concept_id, length in non_standard:
+            utils.logger.warning(f"  - {col}: Concept ID '{concept_id}' has {length} digits (should be 9)")
+        
+        # Optionally, we could raise an exception to halt the pipeline
+        # raise ValueError("Non-standard concept IDs found. Please fix the source data.")
+
 def is_pure_variable(var: str) -> bool:
     """
     Returns True if the variable name is "pure"—i.e. it only consists of allowed tokens.
@@ -101,12 +137,15 @@ def is_pure_variable(var: str) -> bool:
       - The literal "D" (or "d")
       - Any token composed solely of digits (e.g. a 9-digit concept ID or a loop number of any length)
       - The tokens "Connect_ID" or "token" (if expected)
+      - Version indicators like "v1", "v2", "v3", etc.
     
     For example:
         >>> is_pure_variable("D_869387390_11_11_D_478706011_11")
         True
         >>> is_pure_variable("D_907590067_4_4_SIBCANC3O_D_650332509_4")
         False
+        >>> is_pure_variable("D_299417266_v2")
+        True
     """
     
     if var.lower() in constants.ALLOWED_NON_CID_VARIABLE_NAMES and var.lower():
@@ -126,6 +165,9 @@ def is_pure_variable(var: str) -> bool:
         # Allow tokens that are entirely digits
         if token.isdigit():
             continue
+        # Allow version indicators like v1, v2, v3, etc.
+        if token.lower().startswith('v') and token[1:].isdigit():
+            continue
         # Allow additional allowed tokens
         if token.lower() in constants.ALLOWED_NON_CID_SUBSTRINGS:
             continue
@@ -133,83 +175,100 @@ def is_pure_variable(var: str) -> bool:
         return False
     return True
 
+def extract_version_suffix(var_name: str) -> str:
+    """
+    Extracts the version suffix (like _v2, _v3) from a variable name, regardless of position
+    
+    Returns the version suffix if found, or an empty string if no version is present.
+    
+    Examples:
+        >>> extract_version_suffix("d_123456789_v2_1_1")
+        "_v2"
+        >>> extract_version_suffix("d_123456789_V3_1_1")
+        "_v3"
+        >>> extract_version_suffix("d_123456789_1_1")
+        ""
+    """
+    match = re.search(r'_[vV](\d+)(?=_|$)', var_name)
+    if match:
+        return f"_v{match.group(1)}"
+    return ""
+
+def excise_version_from_column_name(column_name: str) -> str:
+    """
+    Removes version suffixes (_v1, _v2, _v3, etc.) from column names while preserving 
+    the rest. This works regardless of the position of _vN.
+    
+    Examples:
+    - D_191057574_V2 → D_191057574
+    - D_715581797_V3_1_1 → D_715581797_1_1
+    - D_899251483_V2_D_452438775 → D_899251483_D_452438775
+    
+    Parameters:
+        column_name (str): Original column name with version suffix
+        
+    Returns:
+        str: Cleaned column name with version suffix removed
+    """
+    # Use regex to find and remove the _vN part where N is any digit
+    return re.sub(r'_[vV]\d+(?=_|$)', '', column_name)
+
+import re
+from collections import Counter
+
 def extract_loop_number(var_name: str) -> int:
     """
-    Extracts the loop number (N) from a variable name.
-
-    The loop number appears as a repeated digit `_N_N` following a concept ID.
-
-    Examples:
-
-        >>> extract_loop_number("d_123456789_2_2_d_987654321_2_2")
-        2
-        >>> extract_loop_number("d_123456789_9_9_d_987654321_9_9_9_9_9_9")
-        9
-        >>> extract_loop_number("d_123456789_5_5")
-        5
-
-    Args:
-        var_name (str): The variable name containing the loop number.
-
-    Returns:
-        int: The identified loop number, or None if no valid pattern is found.
+    Extracts the loop number from a variable name, accounting for version suffixes and patterns.
+    Returns the first matched loop number, or None if not found.
     """
-    match = re.search(r'_(\d+)\_\1(?!\d)', var_name)
+    # Case 1: Version-style loop pattern like _v2_5_5
+    match = re.search(r'_v\d+_(\d+)_\1(?!\d)', var_name, re.IGNORECASE)
     if match:
         return int(match.group(1))
-    
+
+    cleaned_var = excise_version_from_column_name(var_name)
+
+    # Case 2: Match all _N_N loop patterns
+    matches = re.findall(r'_(\d+)_\1(?!\d)', cleaned_var)
+    if matches:
+        return int(matches[0])
+
+    # Case 3: Only match trailing _N if there's also _N_N pattern in the string
+    if re.search(r'_(\d+)_\1', cleaned_var):  # pattern like _3_3
+        match = re.search(r'_(\d+)$', cleaned_var)
+        if match:
+            return int(match.group(1))
+
     return None
 
 def group_vars_by_cid_and_loop_num(var_names: list) -> dict:
     """
-    Groups variable names that share the same concept IDs and the same loop number.
+    Groups variable names that share the same concept IDs, loop number, and version.
 
-    Each key in the output dictionary is a tuple (concept_ids, loop_number), where:
-      - `concept_ids` is a **frozenset** of unique concept IDs extracted from the variable name.
-      - `loop_number` is the repeated integer (N) following `_N_N` (if present).
-
+    Each key in the output dictionary is a tuple (concept_ids, loop_number, version_suffix), where:
+    - `concept_ids` is a **frozenset** of unique concept IDs extracted from the variable name.
+    - `loop_number` is the repeated integer (N) following `_N_N` (if present).
+    - `version_suffix` is the version suffix (e.g., "_v2", "_v3") or empty string for no version.
+    
     Only variables with a valid loop number (N) are included.
-
-    Examples:
-        >>> var_list = [
-        ...     "d_123456789_1_1_d_987654321_1_1",
-        ...     "d_123456789_2_2_d_987654321_2_2",
-        ...     "d_111111111_1_1_d_222222222_1_1",
-        ...     "d_123456789_9_9_d_987654321_9_9",
-        ...     "d_123456789_9_9_d_987654321_9_9_9_9_9_9",
-        ...     "d_123456789_5_5",
-        ...     "d_123456789"  # No loop number, should be ignored
-        ... ]
-
-        >>> grouped_vars = group_vars_by_cid_and_loop_num(var_list)
-
-        >>> for key, vars in grouped_vars.items():
-        ...     concept_ids, loop_number = key
-        ...     print(f"Concept IDs: {sorted(concept_ids)}, Loop Number: {loop_number}, Variables: {vars}")
-
-        Output:
-        Concept IDs: ['123456789', '987654321'], Loop Number: 1, Variables: ['d_123456789_1_1_d_987654321_1_1']
-        Concept IDs: ['123456789', '987654321'], Loop Number: 2, Variables: ['d_123456789_2_2_d_987654321_2_2']
-        Concept IDs: ['111111111', '222222222'], Loop Number: 1, Variables: ['d_111111111_1_1_d_222222222_1_1']
-        Concept IDs: ['123456789', '987654321'], Loop Number: 9, Variables: ['d_123456789_9_9_d_987654321_9_9', 'd_123456789_9_9_d_987654321_9_9_9_9_9_9']
-        Concept IDs: ['123456789'], Loop Number: 5, Variables: ['d_123456789_5_5']
-
-    Args:
-        var_names (list): A list of variable names.
-
-    Returns:
-        dict: A dictionary where keys are tuples (frozenset(concept_ids), loop_number),
-              and values are lists of variable names that match the criteria.
     """
     grouped_vars = defaultdict(list)
-
+    
     for var in var_names:
-        concept_ids = frozenset(extract_ordered_concept_ids(var))  # Unique set of concept IDs
-        loop_number = extract_loop_number(var)  # Extract loop number (can be None)
-
+        # Extract the version suffix
+        version_suffix = extract_version_suffix(var)
+        
+        # Clean the variable name to extract concept IDs
+        cleaned_var = excise_version_from_column_name(var)
+        
+        # Extract concept IDs and loop number from the cleaned variable name
+        concept_ids = frozenset(extract_ordered_concept_ids(cleaned_var))
+        loop_number = extract_loop_number(var)
+        
         if concept_ids and loop_number is not None:  # Only include loop variables
-            grouped_vars[(concept_ids, loop_number)].append(var)
-
+            # Include version_suffix in the grouping key
+            grouped_vars[(concept_ids, loop_number, version_suffix)].append(var)
+    
     return dict(grouped_vars)
 
 def get_list_non_cid_str_patterns(column_names):
