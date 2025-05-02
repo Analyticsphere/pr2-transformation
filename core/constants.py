@@ -20,7 +20,7 @@ PROJECT = os.environ.get("PROJECT_ID")
 ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
 
 # Forbidden variable names that will be dropped because they lack research value
-FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha'] 
+FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym', 'utm_source', 'verifiedSeen'] 
 
 # Substrings that need fixing (future updates; drop columns for now)
 SUBSTRINGS_TO_FIX = ['num']
@@ -32,7 +32,7 @@ SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
 SUBSTRINGS_MISSNAMED = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
     'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2',
-    '20required' 
+    '20required'
 ]
 
 # Combine all substring lists, removing duplicates
