@@ -206,7 +206,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
         # Construct raw variable name using ordered concept IDs, loop number, and version
         # Then remove fixed substrings like 'num' and 'state_' to standardize the output name
         raw_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
-        new_var_name = utils.excise_fixed_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
+        new_var_name = utils.excise_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
 
         
         if len(var_list) == 1:
@@ -218,7 +218,7 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
     # Include non-loop variables in the SELECT clause
     # Also remove fixed substrings from their names for consistency
     for var in non_loop_vars:
-        new_var_name = utils.excise_fixed_substrings(var, constants.SUBSTRINGS_TO_FIX)
+        new_var_name = utils.excise_substrings(var, constants.SUBSTRINGS_TO_FIX)
         select_clauses.append((new_var_name, var))
     
     sorted_clauses = sorted(select_clauses, key=lambda x: x[0])
