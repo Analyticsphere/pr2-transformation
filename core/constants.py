@@ -38,7 +38,6 @@ SUBSTRINGS_MISSNAMED = [
 
 # Combine all substring lists, removing duplicates
 EXCLUDED_NON_CID_SUBSTRINGS = list(
-    SUBSTRINGS_TO_FIX +
     SUBSTRINGS_DATATYPE_CONFLICT +
     SUBSTRINGS_MISSNAMED
 )

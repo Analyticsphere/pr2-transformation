@@ -342,3 +342,11 @@ def get_valid_column_names(client: bigquery.Client, fq_table: str) -> set:
     columns_exclude = get_column_exceptions_to_exclude(client=client, fq_table=fq_table)
     valid_columns = set(columns_all) - set(columns_exclude)
     return list(valid_columns)
+
+def excise_substrings(var_name: str, substrings_to_excise: list[str]) -> str:
+    """
+    Removes all substrings from a variable name that appear in the substrings_to_fix list.
+    """
+    for substring in substrings_to_excise:
+        var_name = var_name.replace(substring, "")
+    return var_name
