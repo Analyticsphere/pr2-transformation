@@ -21,7 +21,7 @@ ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
 
 # Forbidden variable names that will be dropped because they lack research value
 FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym', 'utm_source', 'verifiedSeen', 
-                                    'id', 'pin', 'state_studyId', 'firstSurveyCompletedSeen'] 
+                                    'id', 'pin', 'state_studyId', 'state_uid', 'firstSurveyCompletedSeen'] 
 
 # Substrings that need fixing (future updates; drop columns for now)
 SUBSTRINGS_TO_FIX = ['_num', 'state_']
