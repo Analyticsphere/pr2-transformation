@@ -20,10 +20,11 @@ PROJECT = os.environ.get("PROJECT_ID")
 ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
 
 # Forbidden variable names that will be dropped because they lack research value
-FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym', 'utm_source', 'verifiedSeen'] 
+FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym', 'utm_source', 'verifiedSeen', 
+                                    'id'] 
 
 # Substrings that need fixing (future updates; drop columns for now)
-SUBSTRINGS_TO_FIX = ['num']
+SUBSTRINGS_TO_FIX = ['num', 'state_']
 
 # Substrings indicating datatype conflicts (to be fixed upstream in Firestore; drop columns for now)
 SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
