@@ -24,7 +24,7 @@ FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym'
                                     'id', 'pin', 'state_studyId', 'firstSurveyCompletedSeen'] 
 
 # Substrings that need fixing (future updates; drop columns for now)
-SUBSTRINGS_TO_FIX = ['num', 'state_']
+SUBSTRINGS_TO_FIX = ['_num', 'state_']
 
 # Substrings indicating datatype conflicts (to be fixed upstream in Firestore; drop columns for now)
 SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
@@ -43,5 +43,5 @@ EXCLUDED_NON_CID_SUBSTRINGS = list(
 )
 
 # Allowable non-concept id substrings
-ALLOWED_NON_CID_SUBSTRINGS = []
+ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state']
 
