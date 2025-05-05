@@ -54,8 +54,8 @@ ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state']
 # to occur again so we will fix them explicitly rather than trying to put together a generalized approach.
 ONE_OFF_COLUMN_RENAME_MAPPINGS = {
     "FlatConnect.module1_v1_JP": [
-        {"source": "D_122887481_TUBLIG_D_232595513", "target": "D_12288748_D_623218391", "description": "Fix Tubal Ligation Age CID"},
-        {"source": "D_122887481_TUBLIG_D_614366597", "target": "D_12288748_D_802622485", "description": "Fix Tubal Ligation Year CID"},
+        {"source": "D_122887481_TUBLIG_D_232595513", "target": "D_122887481_D_623218391", "description": "Fix Tubal Ligation Age CID"},
+        {"source": "D_122887481_TUBLIG_D_614366597", "target": "D_122887481_D_802622485", "description": "Fix Tubal Ligation Year CID"},
         {"source": "D_259089008_1_1_SIBCANC3O_D_230633094_1", "target": "D_259089008_D_206625031_1", "description": "Fix Sibling Cancer Age CID"},
         {"source": "D_259089008_1_1_SIBCANC3O_D_962468280_1", "target": "D_259089008_D_261863326_1", "description": "Fix Sibling Cancer Year CID"},
         {"source": "D_301414575_DEPRESS2_D_479548517", "target": "D_301414575_D_261863326", "description": "Fix Depression Year CID"},
