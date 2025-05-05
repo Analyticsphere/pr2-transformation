@@ -139,7 +139,6 @@ def test_compose_coalesce_loop_variable_query(
             assert result["status"] == "Table test-project.test-dataset.destination-table successfully created or replaced."
             assert result["submitted_sql_path"] == "gs://test-bucket/sql/"
 
-
 def test_version_placement_debug(monkeypatch):
     """
     Debug test to examine exactly how version placement works in multi-concept-ID columns.
