@@ -260,7 +260,7 @@ def apply_one_off_column_renames(source_table: str, destination_table: str) -> t
     sql = f"""
     CREATE OR REPLACE TABLE `{destination_table}` AS
     SELECT
-        {',\n        '.join(select_parts)}
+        {',\\n        '.join(select_parts)}
     FROM `{source_table}`
     """
     
