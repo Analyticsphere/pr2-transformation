@@ -257,10 +257,11 @@ def apply_one_off_column_renames(source_table: str, destination_table: str) -> t
             utils.logger.info(f"Coalescing: {coalesce_expr}")
     
     # Create the SQL for the destination table
+    separator = ',\n        '
     sql = f"""
     CREATE OR REPLACE TABLE `{destination_table}` AS
     SELECT
-        {',\\n        '.join(select_parts)}
+        {separator.join(select_parts)}
     FROM `{source_table}`
     """
     
