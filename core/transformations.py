@@ -110,7 +110,7 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
         gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
         utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
     except Exception as e:
-        utils.logger.exception("Error executing saving query {gcs_path}.")
+        utils.logger.exception(f"Error executing saving query {gcs_path}.")
         raise e
 
     # Submit query job to BQ
@@ -399,7 +399,7 @@ def process_loop_and_versioned_variables(source_table: str, destination_table: s
         gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
         utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
     except Exception as e:
-        utils.logger.exception("Error executing saving query {gcs_path}.")
+        utils.logger.exception(f"Error executing saving query {gcs_path}.")
         raise e
 
     # Submit query job to BQ
