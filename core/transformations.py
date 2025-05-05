@@ -131,6 +131,8 @@ def apply_one_off_column_renames(source_table: str, destination_table: str) -> t
     """
     Applies one-off column renames from constants.ONE_OFF_COLUMN_RENAME_MAPPINGS to a table.
     
+    If a target column already exists, it will coalesce the source and target columns.
+    
     Args:
         source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
         destination_table (str): A fully qualified destination table.
@@ -162,36 +164,111 @@ def apply_one_off_column_renames(source_table: str, destination_table: str) -> t
     # Get all columns from the source table
     columns = utils.get_column_names(client, source_table)
     
-    # Prepare the SELECT clause with renamed columns
+    # Convert to lowercase for case-insensitive matching (except Connect_ID)
+    columns_lower = [col.lower() if col != "Connect_ID" else col for col in columns]
+    
+    # Create a lookup dictionary for original column names
+    col_case_map = {col.lower(): col for col in columns if col != "Connect_ID"}
+    col_case_map["connect_id"] = "Connect_ID"  # Ensure Connect_ID is preserved
+    
+    # Track which target names have been seen to handle duplicates
+    target_columns = set()
+    coalesce_groups = {}
+    
+    # Process mappings and group columns that need to be coalesced
+    for mapping in mappings:
+        source_col_lower = mapping['source'].lower()
+        target_col_lower = mapping['target'].lower()
+        
+        # Skip mappings where the source column doesn't exist
+        if source_col_lower not in columns_lower and source_col_lower not in col_case_map:
+            utils.logger.warning(f"Source column '{mapping['source']}' not found in table, skipping")
+            continue
+        
+        # Get the correctly cased source column
+        source_col = col_case_map.get(source_col_lower, mapping['source'])
+        
+        # Add this to our coalesce groups
+        if target_col_lower in target_columns or target_col_lower in columns_lower:
+            # Target already exists, add to coalesce group
+            if target_col_lower not in coalesce_groups:
+                # If target already exists in original columns, initialize the group with it
+                if target_col_lower in columns_lower:
+                    original_col = col_case_map.get(target_col_lower)
+                    coalesce_groups[target_col_lower] = [original_col]
+                else:
+                    coalesce_groups[target_col_lower] = []
+            
+            # Add the source column to the coalesce group
+            coalesce_groups[target_col_lower].append(source_col)
+            utils.logger.info(f"Adding '{source_col}' to coalesce group for '{mapping['target']}'")
+        else:
+            # First time seeing this target, mark it as seen
+            target_columns.add(target_col_lower)
+            # Initialize a coalesce group
+            coalesce_groups[target_col_lower] = [source_col]
+    
+    # Prepare the SELECT clause with renames and coalescing
     select_parts = []
+    
+    # First add Connect_ID
+    if "Connect_ID" in columns:
+        select_parts.append("Connect_ID")
+    
+    # Process columns that are not involved in any rename
     for col in columns:
-        # Check if this column should be renamed
-        renamed = False
+        col_lower = col.lower()
+        
+        # Skip Connect_ID as we've already added it
+        if col == "Connect_ID":
+            continue
+        
+        # Skip columns that are used as sources in our mappings
+        is_source = False
         for mapping in mappings:
-            if mapping['source'].lower() == col.lower():
-                select_parts.append(f"{col} AS {mapping['target']}")
-                renamed = True
-                utils.logger.info(f"Renaming column: {col} AS {mapping['target']}")
+            if mapping['source'].lower() == col_lower:
+                is_source = True
                 break
         
-        # If not renamed, keep as is
-        if not renamed:
+        # Skip columns that will be processed as part of a coalesce group
+        is_in_coalesce_group = False
+        for group_cols in coalesce_groups.values():
+            if col in group_cols:
+                is_in_coalesce_group = True
+                break
+        
+        if not is_source and not is_in_coalesce_group:
             select_parts.append(col)
+    
+    # Add coalesce groups
+    for target_col, source_cols in coalesce_groups.items():
+        # Get the properly cased target column name
+        target_col_cased = next((mapping['target'] for mapping in mappings 
+                               if mapping['target'].lower() == target_col), target_col)
+        
+        if len(source_cols) == 1:
+            # No need to coalesce if there's only one source
+            select_parts.append(f"{source_cols[0]} AS {target_col_cased}")
+            utils.logger.info(f"Renaming: {source_cols[0]} AS {target_col_cased}")
+        else:
+            # Coalesce multiple source columns
+            coalesce_expr = f"COALESCE({', '.join(source_cols)}) AS {target_col_cased}"
+            select_parts.append(coalesce_expr)
+            utils.logger.info(f"Coalescing: {coalesce_expr}")
     
     # Create the SQL for the destination table
     sql = f"""
     CREATE OR REPLACE TABLE `{destination_table}` AS
     SELECT
-        {', '.join(select_parts)}
+        {',\n        '.join(select_parts)}
     FROM `{source_table}`
     """
     
     # Save the SQL to GCS for audit purposes
-    try: 
+    try:
         gcs_client = storage.Client()
         gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}_rename.sql"
         utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
-        utils.logger.info('Saved SQL to {gcs_path}!')
     except Exception as e:
         utils.logger.exception(f"Error saving SQL: {e}")
         raise e
