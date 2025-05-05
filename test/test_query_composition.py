@@ -138,3 +138,106 @@ def test_compose_coalesce_loop_variable_query(
             # Check that the function returns the expected result
             assert result["status"] == "Table test-project.test-dataset.destination-table successfully created or replaced."
             assert result["submitted_sql_path"] == "gs://test-bucket/sql/"
+
+def test_version_placement_debug(monkeypatch):
+    """
+    Debug test to examine exactly how version placement works in multi-concept-ID columns.
+    """
+    # Problem column examples
+    problem_columns = [
+        "d_899251483_v2_d_812107266_6_6",  # Version in the middle
+        "d_71558179_v2_5_5",               # Version followed by loop numbers
+        "d_899251483_v2_d_812107266"       # Version in the middle, no loop numbers
+    ]
+    
+    # Create mock clients
+    mock_bq_client = MagicMock(spec=bigquery.Client)
+    mock_gcs_client = MagicMock(spec=storage.Client)
+    
+    # Set up query job mock
+    query_job = MagicMock()
+    query_job.result.return_value = None
+    mock_bq_client.query.return_value = query_job
+    
+    # Apply patches for external dependencies
+    with patch("google.cloud.bigquery.Client", return_value=mock_bq_client):
+        with patch("google.cloud.storage.Client", return_value=mock_gcs_client):
+            # Mock the get_valid_column_names function
+            full_columns = ["Connect_ID"] + problem_columns
+            monkeypatch.setattr(
+                utils, "get_valid_column_names", 
+                lambda client, fq_table: full_columns
+            )
+            
+            # Mock functions that interact with external services
+            monkeypatch.setattr(utils, "validate_column_names", lambda client, fq_table: None)
+            monkeypatch.setattr(utils, "save_sql_string", lambda sql, path, storage_client: None)
+            
+            # Mock the parse_fq_table function
+            monkeypatch.setattr(
+                utils, "parse_fq_table", 
+                lambda table: ("test-project", "test-dataset", "test-table")
+            )
+            
+            # Set a constant value for OUTPUT_SQL_PATH
+            monkeypatch.setattr(constants, "OUTPUT_SQL_PATH", "gs://test-bucket/sql/")
+            
+            # Capture debug info
+            debug_info = {}
+            
+            # Hook into the key functions to capture intermediate results
+            original_extract_version = utils.extract_version_suffix
+            original_excise_version = utils.excise_version_from_column_name
+            original_extract_ordered_ids = utils.extract_ordered_concept_ids
+            
+            def debug_extract_version(var_name):
+                result = original_extract_version(var_name)
+                debug_info[f"extract_version_{var_name}"] = result
+                return result
+            
+            def debug_excise_version(column_name):
+                result = original_excise_version(column_name)
+                debug_info[f"excise_version_{column_name}"] = result
+                return result
+            
+            def debug_extract_ordered_ids(var):
+                result = original_extract_ordered_ids(var)
+                debug_info[f"extract_ordered_ids_{var}"] = result
+                return result
+            
+            monkeypatch.setattr(utils, "extract_version_suffix", debug_extract_version)
+            monkeypatch.setattr(utils, "excise_version_from_column_name", debug_excise_version)
+            monkeypatch.setattr(utils, "extract_ordered_concept_ids", debug_extract_ordered_ids)
+            
+            # Call the function
+            compose_coalesce_loop_variable_query(
+                "test-project.test-dataset.source-table",
+                "test-project.test-dataset.destination-table"
+            )
+            
+            # Get the SQL query
+            sql_query = mock_bq_client.query.call_args[0][0]
+            
+            # Extract the column transformations from the SQL
+            transformations = {}
+            for col in problem_columns:
+                # Find the transformation for this column
+                pattern = re.compile(f"{re.escape(col)} AS ([^ ,\n]+)")
+                match = pattern.search(sql_query)
+                if match:
+                    transformations[col] = match.group(1)
+                else:
+                    transformations[col] = "NOT_FOUND"
+            
+            # Print debug info
+            for col in problem_columns:
+                print(f"\nColumn: {col}")
+                print(f"  Extract Version: {debug_info.get(f'extract_version_{col}', 'N/A')}")
+                print(f"  Excise Version: {debug_info.get(f'excise_version_{col}', 'N/A')}")
+                excised = debug_info.get(f'excise_version_{col}', col)
+                print(f"  Extract Ordered IDs: {debug_info.get(f'extract_ordered_ids_{excised}', 'N/A')}")
+                print(f"  Final transformation: {col} -> {transformations.get(col, 'N/A')}")
+            
+            # Assertions to check specific transformations
+            assert transformations["d_899251483_v2_d_812107266_6_6"] == "d_899251483_d_812107266_6_v2", \
+                f"Expected d_899251483_d_812107266_6_v2, got {transformations['d_899251483_v2_d_812107266_6_6']}"
