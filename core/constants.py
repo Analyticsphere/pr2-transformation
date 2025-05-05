@@ -62,7 +62,7 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_301414575_DEPRESS2_D_591959654", "target": "D_301414575_D_206625031", "description": "Fix Depression Age CID"},
         {"source": "D_301679110_DM2_D_166195719", "target": "D_301679110_D_261863326", "description": "Fix Diabetes Year CID"},
         {"source": "D_301679110_DM2_D_861769692", "target": "D_301679110_D_206625031", "description": "Fix Diabetes Age CID"},
-        {"source": "D_355472178_BREASTDIS_D_138780721", "target": "D_619481x697_D_261863326", "description": "Fix Breast Disease Year CID"},
+        {"source": "D_355472178_BREASTDIS_D_138780721", "target": "D_619481697_D_261863326", "description": "Fix Breast Disease Year CID"},
         {"source": "D_355472178_BREASTDIS_D_162512268", "target": "D_619481697_D_206625031", "description": "Fix Breast Disease Age CID"},
         {"source": "D_367884741_TONSILS_D_300754548", "target": "D_367884741_D_623218391", "description": "Fix Tonsillectomy Age CID"},
         {"source": "D_367884741_TONSILS_D_714712574", "target": "D_367884741_D_802622485", "description": "Fix Tonsillectomy Year CID"},
