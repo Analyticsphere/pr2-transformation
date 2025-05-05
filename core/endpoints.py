@@ -5,7 +5,7 @@ from datetime import datetime
 
 from flask import Flask, jsonify, request  # type: ignore
 
-from core import query_composition, constants, utils, request_helpers
+from core import constants, transformations, utils, request_helpers
 
 app = Flask(__name__)
 
@@ -24,8 +24,8 @@ def fix_loop_variables():
     source, destination = request_helpers.extract_source_and_destination(mapping)
     
     try:
-        utils.logger.info(f"fix_loop_variables endpoint called. Generating {source} from {destination}.")
-        status = query_composition.compose_coalesce_loop_variable_query(source, destination)
+        utils.logger.info(f"fix_loop_variables endpoint called. Generating {destination} from {source}.")
+        status = transformations.process_columns(source, destination)  # Updated function call
         return jsonify({
             'status': status,
             'timestamp': datetime.utcnow().isoformat(),
@@ -42,7 +42,7 @@ def merge_table_versions():
     
     try:
         utils.logger.info(f"merge_table_versions endpoint called. Merging {source} to generate {destination}.")
-        status = query_composition.create_or_replace_table_with_outer_join(source, destination)
+        status = transformations.merge_table_versions(source, destination)
         return jsonify({
             'status': status,
             'timestamp': datetime.utcnow().isoformat(),

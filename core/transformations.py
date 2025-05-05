@@ -5,7 +5,7 @@ from google.cloud import storage
 import core.constants as constants
 import core.utils as utils
 
-def create_or_replace_table_with_outer_join(source_tables: list[str], destination_table: str) -> dict:
+def merge_table_versions(source_tables: list[str], destination_table: str) -> dict:
     """
     Creates or replaces a BigQuery table by performing a full outer join on the source tables.
     
@@ -127,11 +127,93 @@ def create_or_replace_table_with_outer_join(source_tables: list[str], destinatio
         "submitted_sql_path": constants.OUTPUT_SQL_PATH
     }
 
+def apply_one_off_column_renames(source_table: str, destination_table: str) -> tuple[str, bool]:
+    """
+    Applies one-off column renames from constants.ONE_OFF_COLUMN_RENAME_MAPPINGS to a table.
+    
+    Args:
+        source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
+        destination_table (str): A fully qualified destination table.
+        
+    Returns:
+        tuple[str, bool]: A tuple containing:
+            - The table name to use for the next step (either the original source_table if no renames
+              were applied, or the destination_table if renames were applied)
+            - A boolean indicating whether a new table was created (True) or not (False)
+    """
+    project, dataset, table_name = utils.parse_fq_table(source_table)
+    client = bigquery.Client(project=project)
+    
+    # Get full table identifier to check for mappings
+    parts = source_table.split('.')
+    if len(parts) >= 2:
+        full_table_identifier = '.'.join(parts[1:])
+    else:
+        full_table_identifier = table_name
+    
+    # Check if there are any mappings for this table
+    mappings = constants.ONE_OFF_COLUMN_RENAME_MAPPINGS.get(full_table_identifier, [])
+    
+    if not mappings:
+        # No mappings, no need to create a new table
+        utils.logger.info(f"No one-off column mappings for table {full_table_identifier}, skipping rename step")
+        return source_table, False
+    
+    # Get all columns from the source table
+    columns = utils.get_column_names(client, source_table)
+    
+    # Prepare the SELECT clause with renamed columns
+    select_parts = []
+    for col in columns:
+        # Check if this column should be renamed
+        renamed = False
+        for mapping in mappings:
+            if mapping['source'].lower() == col.lower():
+                select_parts.append(f"{col} AS {mapping['target']}")
+                renamed = True
+                utils.logger.info(f"Renaming column: {col} AS {mapping['target']}")
+                break
+        
+        # If not renamed, keep as is
+        if not renamed:
+            select_parts.append(col)
+    
+    # Create the SQL for the destination table
+    sql = f"""
+    CREATE OR REPLACE TABLE `{destination_table}` AS
+    SELECT
+        {', '.join(select_parts)}
+    FROM `{source_table}`
+    """
+    
+    # Save the SQL to GCS for audit purposes
+    try: 
+        gcs_client = storage.Client()
+        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}_rename.sql"
+        utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
+        utils.logger.info('Saved SQL to {gcs_path}!')
+    except Exception as e:
+        utils.logger.exception(f"Error saving SQL: {e}")
+        raise e
+    
+    # Execute the SQL
+    try:
+        query_job = client.query(sql)
+        query_job.result()  # Wait for the query to finish
+        status = f"Table {destination_table} created with renamed columns"
+        utils.logger.info(status)
+        return destination_table, True
+    except Exception as e:
+        utils.logger.exception(f"Error executing SQL: {e}")
+        raise e
 
-def compose_coalesce_loop_variable_query(source_table: str, destination_table: str) -> dict:
+def process_loop_and_versioned_variables(source_table: str, destination_table: str) -> dict:
     """
     Generates and executes a SQL statement to coalesce multiple versions of loop variables,
     creating or replacing a destination table in BigQuery, and saves the SQL to a constant path.
+
+    This function also applies one-off column renames specified in ONE_OFF_COLUMN_RENAME_MAPPINGS
+    if they exist for the source table.
     
     Examples:
         Input variables -> Output columns
@@ -256,3 +338,47 @@ def compose_coalesce_loop_variable_query(source_table: str, destination_table: s
         "status": status,
         "submitted_sql_path": constants.OUTPUT_SQL_PATH
     }
+
+def process_columns(source_table: str, destination_table: str) -> dict:
+    """
+    Pipeline function that:
+    1. Applies one-off column renames from constants (if applicable)
+    2. Processes loop and versioned variables
+    
+    Args:
+        source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
+        destination_table (str): A fully qualified destination table.
+        
+    Returns:
+        dict: A dictionary with status information.
+    """
+    # Create intermediate table name with timestamp to avoid collisions
+    from datetime import datetime
+    project, dataset, table = utils.parse_fq_table(source_table)
+    intermediate_table = f"{project}.{dataset}.intermediate_{table}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    
+    try:
+        # Step 1: Apply one-off renames (if applicable)
+        utils.logger.info("Step 1: Checking for one-off column renames")
+        input_table, created_intermediate = apply_one_off_column_renames(source_table, intermediate_table)
+        
+        # Step 2: Process loop and versioned variables
+        utils.logger.info("Step 2: Processing loop and versioned variables")
+        result = process_loop_and_versioned_variables(input_table, destination_table)
+        
+        # Clean up intermediate table if it was created
+        if created_intermediate:
+            utils.logger.info(f"Cleaning up intermediate table {intermediate_table}")
+            client = bigquery.Client(project=project)
+            client.query(f"DROP TABLE `{intermediate_table}`")
+        
+        return result
+    except Exception as e:
+        utils.logger.exception(f"Error in process_columns: {e}")
+        # Try to clean up intermediate table in case of failure
+        try:
+            client = bigquery.Client(project=project)
+            client.query(f"DROP TABLE IF EXISTS `{intermediate_table}`")
+        except:
+            pass
+        raise e
