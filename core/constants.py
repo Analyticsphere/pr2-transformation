@@ -83,7 +83,7 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_907590067_4_4_SIBCANC3O_D_650332509_4", "target": "D_907590067_D_261863326_4", "description": "Fix Sibling Cancer Year CID"},
         {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"}
     ],
-    "FlatConnect.covid19Survey": [
+    "FlatConnect.covid19Survey_v1_JP": [
         {"source": "d_71558179_v2_1_1", "target": "d_715581797_1_v2", "description": ""},
         {"source": "d_71558179_v2_2_2", "target": "d_715581797_2_v2", "description": ""}, 
         {"source": "d_71558179_v2_3_3", "target": "d_715581797_3_v2", "description": ""}, 

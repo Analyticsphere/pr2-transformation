@@ -473,7 +473,7 @@ def process_columns(source_table: str, destination_table: str) -> dict:
     # Create intermediate table name with timestamp to avoid collisions
     from datetime import datetime
     project, dataset, table = utils.parse_fq_table(source_table)
-    intermediate_table = f"{project}.{dataset}.intermediate_{table}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    intermediate_table = f"{project}.{dataset}.intermediate_{table}"
     
     try:
         # Step 1: Apply one-off renames (if applicable)
