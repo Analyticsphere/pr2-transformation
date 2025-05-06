@@ -83,7 +83,6 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_884793537_HTN_D_608469482", "target": "D_884793537_D_261863326", "description": "Fix Hypertension Year CID"},
         {"source": "D_907590067_4_4_SIBCANC3O_D_650332509_4", "target": "D_907590067_D_261863326_4", "description": "Fix Sibling Cancer Year CID"},
         {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"},
-
         # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/5
         {"source": "D_150352141_D_206625031", "target": "D_150352141_D_623218391", "description": ""},
         {"source": "D_150352141_D_261863326", "target": "D_150352141_D_802622485", "description": ""},
@@ -98,7 +97,24 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_275770221_D_206625031", "target": "D_275770221_D_623218391", "description": ""},
         {"source": "D_275770221_D_261863326", "target": "D_275770221_D_802622485", "description": ""},
         {"source": "D_527057404_D_206625031", "target": "D_527057404_D_623218391", "description": ""},
-        {"source": "D_527057404_D_261863326", "target": "D_527057404_D_802622485", "description": ""},
+        {"source": "D_527057404_D_261863326", "target": "D_527057404_D_802622485", "description": ""}
+    ],
+    "FlatConnect.module1_v2_JP": [
+        # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/5
+        {"source": "D_150352141_D_206625031", "target": "D_150352141_D_623218391", "description": ""},
+        {"source": "D_150352141_D_261863326", "target": "D_150352141_D_802622485", "description": ""},
+        {"source": "D_122887481_D_206625031", "target": "D_122887481_D_623218391", "description": ""},
+        {"source": "D_122887481_D_261863326", "target": "D_122887481_D_802622485", "description": ""},
+        {"source": "D_534007917_D_206625031", "target": "D_534007917_D_623218391", "description": ""},
+        {"source": "D_534007917_D_261863326", "target": "D_534007917_D_802622485", "description": ""},
+        {"source": "D_752636038_D_206625031", "target": "D_752636038_D_623218391", "description": ""},
+        {"source": "D_752636038_D_261863326", "target": "D_752636038_D_802622485", "description": ""},
+        {"source": "D_518750011_D_206625031", "target": "D_518750011_D_623218391", "description": ""},
+        {"source": "D_518750011_D_261863326", "target": "D_518750011_D_802622485", "description": ""},
+        {"source": "D_275770221_D_206625031", "target": "D_275770221_D_623218391", "description": ""},
+        {"source": "D_275770221_D_261863326", "target": "D_275770221_D_802622485", "description": ""},
+        {"source": "D_527057404_D_206625031", "target": "D_527057404_D_623218391", "description": ""},
+        {"source": "D_527057404_D_261863326", "target": "D_527057404_D_802622485", "description": ""}
     ],
     "FlatConnect.covid19Survey_v1_JP": [
         # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/21
