@@ -82,7 +82,9 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_884793537_HTN_D_367670682", "target": "D_884793537_D_206625031", "description": "Fix Hypertension Age CID"},
         {"source": "D_884793537_HTN_D_608469482", "target": "D_884793537_D_261863326", "description": "Fix Hypertension Year CID"},
         {"source": "D_907590067_4_4_SIBCANC3O_D_650332509_4", "target": "D_907590067_D_261863326_4", "description": "Fix Sibling Cancer Year CID"},
-        {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"},
+        {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"}
+    ],
+    "FlatConnect.module1_v2_JP": [
         # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/5
         {"source": "D_150352141_D_206625031", "target": "D_150352141_D_623218391", "description": ""},
         {"source": "D_150352141_D_261863326", "target": "D_150352141_D_802622485", "description": ""},
