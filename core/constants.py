@@ -54,6 +54,7 @@ ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state']
 # to occur again so we will fix them explicitly rather than trying to put together a generalized approach.
 ONE_OFF_COLUMN_RENAME_MAPPINGS = {
     "FlatConnect.module1_v1_JP": [
+        # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/17
         {"source": "D_122887481_TUBLIG_D_232595513", "target": "D_122887481_D_623218391", "description": "Fix Tubal Ligation Age CID"},
         {"source": "D_122887481_TUBLIG_D_614366597", "target": "D_122887481_D_802622485", "description": "Fix Tubal Ligation Year CID"},
         {"source": "D_259089008_1_1_SIBCANC3O_D_230633094_1", "target": "D_259089008_D_206625031_1", "description": "Fix Sibling Cancer Age CID"},
@@ -81,9 +82,42 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "D_884793537_HTN_D_367670682", "target": "D_884793537_D_206625031", "description": "Fix Hypertension Age CID"},
         {"source": "D_884793537_HTN_D_608469482", "target": "D_884793537_D_261863326", "description": "Fix Hypertension Year CID"},
         {"source": "D_907590067_4_4_SIBCANC3O_D_650332509_4", "target": "D_907590067_D_261863326_4", "description": "Fix Sibling Cancer Year CID"},
-        {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"}
+        {"source": "D_907590067_4_4_SIBCANC3D_D_932489634_4", "target": "D_907590067_D_206625031_4", "description": "Fix Sibling Breast Cancer Age CID"},
+        # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/5
+        {"source": "D_150352141_D_206625031", "target": "D_150352141_D_623218391", "description": ""},
+        {"source": "D_150352141_D_261863326", "target": "D_150352141_D_802622485", "description": ""},
+        {"source": "D_122887481_D_206625031", "target": "D_122887481_D_623218391", "description": ""},
+        {"source": "D_122887481_D_261863326", "target": "D_122887481_D_802622485", "description": ""},
+        {"source": "D_534007917_D_206625031", "target": "D_534007917_D_623218391", "description": ""},
+        {"source": "D_534007917_D_261863326", "target": "D_534007917_D_802622485", "description": ""},
+        {"source": "D_752636038_D_206625031", "target": "D_752636038_D_623218391", "description": ""},
+        {"source": "D_752636038_D_261863326", "target": "D_752636038_D_802622485", "description": ""},
+        {"source": "D_518750011_D_206625031", "target": "D_518750011_D_623218391", "description": ""},
+        {"source": "D_518750011_D_261863326", "target": "D_518750011_D_802622485", "description": ""},
+        {"source": "D_275770221_D_206625031", "target": "D_275770221_D_623218391", "description": ""},
+        {"source": "D_275770221_D_261863326", "target": "D_275770221_D_802622485", "description": ""},
+        {"source": "D_527057404_D_206625031", "target": "D_527057404_D_623218391", "description": ""},
+        {"source": "D_527057404_D_261863326", "target": "D_527057404_D_802622485", "description": ""}
+    ],
+    "FlatConnect.module1_v2_JP": [
+        # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/5
+        {"source": "D_150352141_D_206625031", "target": "D_150352141_D_623218391", "description": ""},
+        {"source": "D_150352141_D_261863326", "target": "D_150352141_D_802622485", "description": ""},
+        {"source": "D_122887481_D_206625031", "target": "D_122887481_D_623218391", "description": ""},
+        {"source": "D_122887481_D_261863326", "target": "D_122887481_D_802622485", "description": ""},
+        {"source": "D_534007917_D_206625031", "target": "D_534007917_D_623218391", "description": ""},
+        {"source": "D_534007917_D_261863326", "target": "D_534007917_D_802622485", "description": ""},
+        {"source": "D_752636038_D_206625031", "target": "D_752636038_D_623218391", "description": ""},
+        {"source": "D_752636038_D_261863326", "target": "D_752636038_D_802622485", "description": ""},
+        {"source": "D_518750011_D_206625031", "target": "D_518750011_D_623218391", "description": ""},
+        {"source": "D_518750011_D_261863326", "target": "D_518750011_D_802622485", "description": ""},
+        {"source": "D_275770221_D_206625031", "target": "D_275770221_D_623218391", "description": ""},
+        {"source": "D_275770221_D_261863326", "target": "D_275770221_D_802622485", "description": ""},
+        {"source": "D_527057404_D_206625031", "target": "D_527057404_D_623218391", "description": ""},
+        {"source": "D_527057404_D_261863326", "target": "D_527057404_D_802622485", "description": ""}
     ],
     "FlatConnect.covid19Survey_v1_JP": [
+        # Issue: https://github.com/Analyticsphere/pr2-documentation/issues/21
         {"source": "d_71558179_v2_1_1", "target": "d_715581797_1_v2", "description": ""},
         {"source": "d_71558179_v2_2_2", "target": "d_715581797_2_v2", "description": ""}, 
         {"source": "d_71558179_v2_3_3", "target": "d_715581797_3_v2", "description": ""}, 
