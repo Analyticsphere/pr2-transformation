@@ -538,7 +538,7 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         # Save the SQL to GCS for audit purposes
         try:
             gcs_client = storage.Client()
-            gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}_combined.sql"
+            gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
             utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
         except Exception as e:
             utils.logger.exception(f"Error saving SQL: {e}")
