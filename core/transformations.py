@@ -242,8 +242,9 @@ def build_one_off_renames_clauses(
         # Get the properly cased target column name
         target_col_cased = next((mapping['target'] for mapping in mappings 
                                if mapping['target'].lower() == target_col), target_col)
-        if target_col_cased != "Connect_ID":
-            target_col_cased = target_col_cased.lower()
+        
+        # Convert variable names to lower case (except Connect_ID)
+        target_col = utils.standardize_column_case(target_col)
             
         # Skip if already processed
         if target_col in processed_columns:
@@ -315,8 +316,8 @@ def build_substring_removal_clauses(
         new_col = utils.excise_substrings(col, constants.SUBSTRINGS_TO_FIX)
 
         # Add standardization:
-        if new_col != "Connect_ID":
-            new_col = new_col.lower()
+        # Standardize case for the new variable name
+        new_col = utils.standardize_column_case(new_col)
         
         # Group columns by their new name to identify duplicates
         if new_col not in column_groups:
@@ -413,10 +414,9 @@ def build_loop_variable_clauses(
         # Then remove fixed substrings to standardize the output name
         raw_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         new_var_name = utils.excise_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
-
-        # Add standardization:
-        if new_var_name != "Connect_ID":
-            new_var_name = new_var_name.lower()
+        
+        # Standardize case for the new variable name
+        new_var_name = utils.standardize_column_case(new_var_name)
         
         # Skip this variable if it would create a duplicate
         if new_var_name.lower() in processed_columns:
@@ -437,6 +437,9 @@ def build_loop_variable_clauses(
     # Also remove fixed substrings from their names for consistency
     for var in non_loop_vars:
         new_var_name = utils.excise_substrings(var, constants.SUBSTRINGS_TO_FIX)
+        
+        # Standardize case for the new variable name
+        new_var_name = utils.standardize_column_case(new_var_name)
         
         # Skip this variable if it would create a duplicate
         if new_var_name.lower() in processed_columns:
