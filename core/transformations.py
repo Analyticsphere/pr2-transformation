@@ -127,49 +127,45 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
         "submitted_sql_path": constants.OUTPUT_SQL_PATH
     }
 
-def apply_one_off_column_renames(source_table: str, destination_table: str) -> tuple[str, bool]:
+def build_one_off_renames_clauses(
+    client: bigquery.Client, 
+    source_table: str, 
+    processed_columns: set) -> tuple[list, set]:
     """
-    Applies one-off column renames from constants.ONE_OFF_COLUMN_RENAME_MAPPINGS to a table.
-    
-    If a target column already exists, it will coalesce the source and target columns.
+    Builds SELECT clauses for one-off column renames from constants.
     
     Args:
-        source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
-        destination_table (str): A fully qualified destination table.
+        client: BigQuery client
+        source_table: Source table name
+        processed_columns: Set of already processed column names (lowercase)
         
     Returns:
-        tuple[str, bool]: A tuple containing:
-            - The table name to use for the next step (either the original source_table if no renames
-              were applied, or the destination_table if renames were applied)
-            - A boolean indicating whether a new table was created (True) or not (False)
+        tuple: (list of SELECT clauses, updated set of processed columns)
     """
-    project, dataset, table_name = utils.parse_fq_table(source_table)
-    client = bigquery.Client(project=project)
+    select_clauses = []
     
-    # Get full table identifier to check for mappings
+    # Get table identifier for mappings lookup
     parts = source_table.split('.')
-    if len(parts) >= 2:
-        full_table_identifier = '.'.join(parts[1:])
-    else:
-        full_table_identifier = table_name
+    _, _, table = utils.parse_fq_table(source_table)
+    full_table_identifier = '.'.join(parts[1:]) if len(parts) >= 2 else table
     
-    # Check if there are any mappings for this table
+    # Get mappings for this table
     mappings = constants.ONE_OFF_COLUMN_RENAME_MAPPINGS.get(full_table_identifier, [])
     
     if not mappings:
-        # No mappings, no need to create a new table
-        utils.logger.info(f"No one-off column mappings for table {full_table_identifier}, skipping rename step")
-        return source_table, False
+        utils.logger.info(f"No one-off column mappings for table {full_table_identifier}")
+        return select_clauses, processed_columns
+    
+    utils.logger.info(f"Found {len(mappings)} one-off column mappings")
     
     # Get all columns from the source table
     columns = utils.get_column_names(client, source_table)
     
-    # Convert to lowercase for case-insensitive matching (except Connect_ID)
-    columns_lower = [col.lower() if col != "Connect_ID" else col for col in columns]
+    # Convert to lowercase for case-insensitive matching
+    columns_lower = [col.lower() for col in columns]
     
     # Create a lookup dictionary for original column names
-    col_case_map = {col.lower(): col for col in columns if col != "Connect_ID"}
-    col_case_map["connect_id"] = "Connect_ID"  # Ensure Connect_ID is preserved
+    col_case_map = {col.lower(): col for col in columns}
     
     # Track which target names have been seen to handle duplicates
     target_columns = set()
@@ -208,158 +204,160 @@ def apply_one_off_column_renames(source_table: str, destination_table: str) -> t
             # Initialize a coalesce group
             coalesce_groups[target_col_lower] = [source_col]
     
-    # Prepare the SELECT clause with renames and coalescing
-    select_parts = []
-    
-    # First add Connect_ID
-    if "Connect_ID" in columns:
-        select_parts.append("Connect_ID")
-    
-    # Process columns that are not involved in any rename
-    for col in columns:
-        col_lower = col.lower()
-        
-        # Skip Connect_ID as we've already added it
-        if col == "Connect_ID":
-            continue
-        
-        # Skip columns that are used as sources in our mappings
-        is_source = False
-        for mapping in mappings:
-            if mapping['source'].lower() == col_lower:
-                is_source = True
-                break
-        
-        # Skip columns that will be processed as part of a coalesce group
-        is_in_coalesce_group = False
-        for group_cols in coalesce_groups.values():
-            if col in group_cols:
-                is_in_coalesce_group = True
-                break
-        
-        if not is_source and not is_in_coalesce_group:
-            select_parts.append(col)
-    
-    # Add coalesce groups
+    # Add coalesce groups to select clauses
     for target_col, source_cols in coalesce_groups.items():
         # Get the properly cased target column name
         target_col_cased = next((mapping['target'] for mapping in mappings 
                                if mapping['target'].lower() == target_col), target_col)
         
+        # Skip if already processed
+        if target_col in processed_columns:
+            continue
+            
         if len(source_cols) == 1:
             # No need to coalesce if there's only one source
-            select_parts.append(f"{source_cols[0]} AS {target_col_cased}")
+            select_clauses.append(f"{source_cols[0]} AS {target_col_cased}")
             utils.logger.info(f"Renaming: {source_cols[0]} AS {target_col_cased}")
         else:
             # Coalesce multiple source columns
             coalesce_expr = f"COALESCE({', '.join(source_cols)}) AS {target_col_cased}"
-            select_parts.append(coalesce_expr)
+            select_clauses.append(coalesce_expr)
             utils.logger.info(f"Coalescing: {coalesce_expr}")
+        
+        # Mark as processed
+        processed_columns.add(target_col)
+        for col in source_cols:
+            processed_columns.add(col.lower())
     
-    # Create the SQL for the destination table
-    separator = ',\n        '
-    sql = f"""
-    CREATE OR REPLACE TABLE `{destination_table}` AS
-    SELECT
-        {separator.join(select_parts)}
-    FROM `{source_table}`
-    """
-    
-    # Save the SQL to GCS for audit purposes
-    try:
-        gcs_client = storage.Client()
-        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}_rename.sql"
-        utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
-    except Exception as e:
-        utils.logger.exception(f"Error saving SQL: {e}")
-        raise e
-    
-    # Execute the SQL
-    try:
-        query_job = client.query(sql)
-        query_job.result()  # Wait for the query to finish
-        status = f"Table {destination_table} created with renamed columns"
-        utils.logger.info(status)
-        return destination_table, True
-    except Exception as e:
-        utils.logger.exception(f"Error executing SQL: {e}")
-        raise e
+    return select_clauses, processed_columns
 
-def process_loop_and_versioned_variables(source_table: str, destination_table: str, excluded_columns: set = None) -> dict:
+def build_substring_removal_clauses(
+    client: bigquery.Client, 
+    source_table: str, 
+    processed_columns: set) -> tuple[list, set]:
     """
-    Generates and executes a SQL statement to coalesce multiple versions of loop variables,
-    creating or replacing a destination table in BigQuery, and saves the SQL to a constant path.
-    
-    Examples:
-        Input variables -> Output columns
-        
-        # Basic loop variable
-        d_123456789_1_1 -> d_123456789_1
-        
-        # Multiple variables with same concept IDs and loop number (coalesced)
-        d_123456789_2_2, D_123456789_2_2_2_2 -> 
-            COALESCE(d_123456789_2_2, D_123456789_2_2_2_2) AS d_123456789_2
-        
-        # Version handling (separate columns)
-        d_123456789_1_1, d_123456789_v2_1_1 -> 
-            d_123456789_1, d_123456789_1_v2
-        
-        # Multiple concept IDs
-        d_123456789_3_3_d_987654321_3_3 -> d_123456789_d_987654321_3
+    Builds SELECT clauses for removing substrings defined in constants.SUBSTRINGS_TO_FIX.
     
     Args:
-        source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
-        destination_table (str): A fully qualified BigQuery table to create or replace.
-        excluded_columns (set, optional): Set of column names (lowercase) to exclude from processing.
+        client: BigQuery client
+        source_table: Source table name
+        processed_columns: Set of already processed column names (lowercase)
         
     Returns:
-        dict: A dictionary containing:
-            - "status": A success message.
-            - "submitted_sql_path": The constant path where the SQL was saved.
-    
-    Raises:
-        ValueError: If any variable name is not pure.
-        Exception: Propagates any errors encountered during query execution.
+        tuple: (list of SELECT clauses, updated set of processed columns)
     """
-    if excluded_columns is None:
-        excluded_columns = set()
-        
-    project, _, _ = utils.parse_fq_table(source_table)
-    client = bigquery.Client(project=project)
+    select_clauses = []
     
-    # At the beginning of compose_coalesce_loop_variable_query
-    utils.validate_column_names(client, source_table)
-
-    # Get all variables
-    all_variables = utils.get_valid_column_names(client=client, fq_table=source_table)
+    # Get all columns from the source table
+    all_columns = utils.get_column_names(client, source_table)
     
-    # Filter out excluded columns (case-insensitive)
-    variables = []
-    for var in all_variables:
-        if var != "Connect_ID" and var.lower() in excluded_columns:
-            utils.logger.info(f"Excluding column {var} from loop variable processing as it was already processed")
+    # Identify columns that need substring removal
+    subset_columns = []
+    for col in all_columns:
+        # Skip already processed columns
+        if col.lower() in processed_columns:
             continue
-        variables.append(var)
+            
+        # Check if any substring from constants.SUBSTRINGS_TO_FIX is in the column name
+        if any(substring in col for substring in constants.SUBSTRINGS_TO_FIX):
+            subset_columns.append(col)
     
-    # Convert all variable names to lower case except for "Connect_ID"
-    variables = [v.lower() if v != "Connect_ID" else v for v in variables]
-    utils.logger.info(f"Processing {len(variables)} total variables")
+    utils.logger.info(f"Found {len(subset_columns)} columns with substrings to remove")
+    
+    # If no columns with substrings to remove, return empty list
+    if not subset_columns:
+        utils.logger.info(f"No columns with substrings to remove found in {source_table}")
+        return select_clauses, processed_columns
+    
+    # Group columns by what they would be after substring removal to handle duplicates
+    column_groups = {}
+    for col in all_columns:
+        # Skip already processed columns
+        if col.lower() in processed_columns:
+            continue
+            
+        # Apply substring removal to get the new column name
+        new_col = utils.excise_substrings(col, constants.SUBSTRINGS_TO_FIX)
+        
+        # Group columns by their new name to identify duplicates
+        if new_col not in column_groups:
+            column_groups[new_col] = []
+        column_groups[new_col].append(col)
+    
+    # Process each column group
+    for new_col, cols in column_groups.items():
+        # Skip if new column name would collide with processed column
+        if new_col.lower() in processed_columns:
+            utils.logger.info(f"Skipping column group for {new_col} as it would create a duplicate")
+            continue
+            
+        if len(cols) == 1:
+            # No duplicate - simple rename or keep as is
+            col = cols[0]
+            if col != new_col:  # Only add AS clause if the name actually changes
+                select_clauses.append(f"{col} AS {new_col}")
+            else:
+                select_clauses.append(col)
+        else:
+            # Handle duplicate with COALESCE
+            # Sort by priority (columns with fewer substrings first)
+            def priority_key(col):
+                # Count how many substrings from SUBSTRINGS_TO_FIX are in the column name
+                return sum(1 for substring in constants.SUBSTRINGS_TO_FIX if substring in col)
+                
+            sorted_cols = sorted(cols, key=priority_key)
+            
+            select_clauses.append(f"COALESCE({', '.join(sorted_cols)}) AS {new_col}")
+            utils.logger.info(f"Using COALESCE for duplicate columns: {sorted_cols} -> {new_col}")
+        
+        # Mark as processed
+        processed_columns.add(new_col.lower())
+        for col in cols:
+            processed_columns.add(col.lower())
+    
+    return select_clauses, processed_columns
 
-    for var in variables:
+def build_loop_variable_clauses(
+    client: bigquery.Client, 
+    source_table: str, 
+    processed_columns: set) -> tuple[list, set]:
+    """
+    Builds SELECT clauses for loop variable processing.
+    
+    Args:
+        client: BigQuery client
+        source_table: Source table name
+        processed_columns: Set of already processed column names (lowercase)
+        
+    Returns:
+        tuple: (list of SELECT clauses, updated set of processed columns)
+    """
+    select_clauses = []
+    
+    # Get valid columns that haven't been processed yet
+    all_columns = utils.get_column_names(client, source_table)
+    remaining_columns = [col for col in all_columns if col.lower() not in processed_columns]
+    
+    # Apply validation
+    for var in remaining_columns:
         if not utils.is_pure_variable(var):
-            raise ValueError(f"Variable {var} is not pure. Please pre-process exceptions before composing the query.")
+            utils.logger.warning(f"Variable {var} is not pure. Skipping loop variable processing.")
+            # Add to processed to avoid including it later
+            processed_columns.add(var.lower())
+    
+    # Get valid remaining columns
+    valid_columns = [col for col in remaining_columns if col.lower() not in processed_columns 
+                     and utils.is_pure_variable(col)]
     
     # Group loop variables
-    grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(variables)
+    grouped_loop_vars = utils.group_vars_by_cid_and_loop_num(valid_columns)
 
     # Find non-loop variables (all variables except those in the grouped loop vars)
     all_loop_vars = []
     for var_list in grouped_loop_vars.values():
         all_loop_vars.extend(var_list)
 
-    non_loop_vars = [var for var in variables if var not in all_loop_vars and var != "Connect_ID"]
-
-    select_clauses = []
+    non_loop_vars = [var for var in valid_columns if var not in all_loop_vars]
 
     # Process loop variables
     for key, var_list in grouped_loop_vars.items():
@@ -373,95 +371,52 @@ def process_loop_and_versioned_variables(source_table: str, destination_table: s
         ordered_ids = utils.extract_ordered_concept_ids(cleaned_var)
         
         # Construct raw variable name using ordered concept IDs, loop number, and version
-        # Then remove fixed substrings like 'num' and 'state_' to standardize the output name
+        # Then remove fixed substrings to standardize the output name
         raw_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         new_var_name = utils.excise_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
         
-        # Skip this variable if it's in the excluded columns list
-        if new_var_name.lower() in excluded_columns:
-            utils.logger.info(f"Skipping output column {new_var_name} as it was already processed")
+        # Skip this variable if it would create a duplicate
+        if new_var_name.lower() in processed_columns:
+            utils.logger.info(f"Skipping output column {new_var_name} as it would create a duplicate")
             continue
         
         if len(var_list) == 1:
             clause = f"{var_list[0]} AS {new_var_name}"
         else:
             clause = f"COALESCE({', '.join(var_list)}) AS {new_var_name}"
-        select_clauses.append((new_var_name, clause))
-        
+            
+        select_clauses.append(clause)
+        processed_columns.add(new_var_name.lower())
+        for var in var_list:
+            processed_columns.add(var.lower())
+    
     # Include non-loop variables in the SELECT clause
     # Also remove fixed substrings from their names for consistency
     for var in non_loop_vars:
         new_var_name = utils.excise_substrings(var, constants.SUBSTRINGS_TO_FIX)
         
-        # Skip this variable if it's in the excluded columns list
-        if new_var_name.lower() in excluded_columns:
-            utils.logger.info(f"Skipping output column {new_var_name} as it was already processed")
+        # Skip this variable if it would create a duplicate
+        if new_var_name.lower() in processed_columns:
+            utils.logger.info(f"Skipping output column {new_var_name} as it would create a duplicate")
             continue
             
-        select_clauses.append((new_var_name, var))
-    
-    # Remove any potential duplicates that might have slipped through
-    seen_columns = set()
-    unique_clauses = []
-    for name, clause in select_clauses:
-        if name.lower() not in seen_columns:
-            seen_columns.add(name.lower())
-            unique_clauses.append((name, clause))
+        if var != new_var_name:
+            select_clauses.append(f"{var} AS {new_var_name}")
         else:
-            utils.logger.warning(f"Removing duplicate column {name} to prevent SQL error")
+            select_clauses.append(var)
+            
+        processed_columns.add(new_var_name.lower())
+        processed_columns.add(var.lower())
     
-    sorted_clauses = sorted(unique_clauses, key=lambda x: x[0])
-    select_clause_strs = [clause for _, clause in sorted_clauses]
-    
-    # Handle the case where all variables were excluded
-    if not select_clause_strs:
-        joined_select_clauses = ""
-        inner_query = f"""
-        SELECT
-            Connect_ID
-        FROM `{source_table}`
-        """.strip()
-    else:
-        joined_select_clauses = ",\n        ".join(select_clause_strs)
-        inner_query = f"""
-        SELECT
-            Connect_ID,
-            {joined_select_clauses}
-        FROM `{source_table}`
-        """.strip()
-    
-    final_query = f"CREATE OR REPLACE TABLE `{destination_table}` AS ({inner_query})"
-    
-    # Save the SQL to GCS for Audit purposes:
-    try:
-        gcs_client = storage.Client()
-        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
-        utils.save_sql_string(sql=final_query, path=gcs_path, storage_client=gcs_client)
-    except Exception as e:
-        utils.logger.exception(f"Error executing saving query {gcs_path}.")
-        raise e
-
-    # Submit query job to BQ
-    try:
-        query_job = client.query(final_query)
-        query_job.result()  # Wait for the query to finish.
-        status = f"Table {destination_table} successfully created or replaced."
-    except Exception as e:
-        utils.logger.exception(f"Error executing the BigQuery job.")
-        raise e
-
-    return {
-        "status": status,
-        "submitted_sql_path": constants.OUTPUT_SQL_PATH
-    }
+    return select_clauses, processed_columns
 
 def process_columns(source_table: str, destination_table: str) -> dict:
     """
-    Pipeline function that:
-    1. Applies one-off column renames from constants (if applicable)
-    2. Processes loop and versioned variables
-    
-    This function ensures no duplicate columns are created throughout the pipeline.
+    Processes columns from source_table to destination_table using a single efficient SQL query
+    that combines all transformation steps:
+    1. One-off column renames
+    2. Substring removal (state_, _num, etc.)
+    3. Loop variable processing
     
     Args:
         source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
@@ -470,53 +425,92 @@ def process_columns(source_table: str, destination_table: str) -> dict:
     Returns:
         dict: A dictionary with status information.
     """
-    # Create intermediate table name with timestamp to avoid collisions
-    from datetime import datetime
     project, dataset, table = utils.parse_fq_table(source_table)
-    intermediate_table = f"{project}.{dataset}.intermediate_{table}"
+    client = bigquery.Client(project=project)
     
     try:
-        # Step 1: Apply one-off renames (if applicable)
-        utils.logger.info("Step 1: Checking for one-off column renames")
-        input_table, created_intermediate = apply_one_off_column_renames(source_table, intermediate_table)
+        processed_columns = set()
+        all_columns = utils.get_column_names(client, source_table)
+        connect_id_clause = []
         
-        # If we created an intermediate table, we need to find which columns were renamed
-        # so we can exclude them from further processing in step 2
-        renamed_cols = set()
-        if created_intermediate:
-            # Get the mappings that were applied
-            parts = source_table.split('.')
-            if len(parts) >= 2:
-                full_table_identifier = '.'.join(parts[1:])
-            else:
-                full_table_identifier = table
-                
-            mappings = constants.ONE_OFF_COLUMN_RENAME_MAPPINGS.get(full_table_identifier, [])
-            
-            # Track the target column names that were created
-            for mapping in mappings:
-                renamed_cols.add(mapping['target'].lower())
-                
-            utils.logger.info(f"The following columns were renamed and will be excluded from further processing: {renamed_cols}")
+        # Step 0: Always include Connect_ID first if it exists
+        if "Connect_ID" in all_columns:
+            connect_id_clause = ["Connect_ID"]
+            processed_columns.add("connect_id")
         
-        # Step 2: Process loop and versioned variables, passing the set of columns to exclude
-        utils.logger.info("Step 2: Processing loop and versioned variables")
-        # We'd need to modify process_loop_and_versioned_variables to accept this parameter
-        result = process_loop_and_versioned_variables(input_table, destination_table, excluded_columns=renamed_cols)
+        # Step 1: Build clauses for one-off column renames
+        utils.logger.info("Step 1: Building one-off column rename clauses")
+        one_off_clauses, processed_columns = build_one_off_renames_clauses(
+            client, source_table, processed_columns)
         
-        # Clean up intermediate table if it was created
-        if created_intermediate:
-            utils.logger.info(f"Cleaning up intermediate table {intermediate_table}")
-            client = bigquery.Client(project=project)
-            client.query(f"DROP TABLE `{intermediate_table}`")
+        # Step 2: Build clauses for substring removal
+        utils.logger.info(f"Step 2: Building clauses for removing substrings from {constants.SUBSTRINGS_TO_FIX}")
+        substring_clauses, processed_columns = build_substring_removal_clauses(
+            client, source_table, processed_columns)
         
-        return result
+        # Step 3: Build clauses for loop variable processing
+        utils.logger.info("Step 3: Building loop variable processing clauses")
+        loop_clauses, processed_columns = build_loop_variable_clauses(
+            client, source_table, processed_columns)
+        
+        # Combine all clauses with appropriate comments
+        select_parts = []
+        
+        # Add Connect_ID first
+        if connect_id_clause:
+            select_parts.append("-- Connect_ID (always preserved)")
+            select_parts.append(connect_id_clause[0])
+        
+        # Add one-off renames with comment
+        if one_off_clauses:
+            select_parts.append("\n-- Step 1: One-off column renames from constants")
+            select_parts.extend(one_off_clauses)
+        
+        # Add substring removal clauses with comment
+        if substring_clauses:
+            select_parts.append("\n-- Step 2: Substring removal (state_, _num, etc.)")
+            select_parts.extend(substring_clauses)
+        
+        # Add loop variable clauses with comment
+        if loop_clauses:
+            select_parts.append("\n-- Step 3: Loop variable processing")
+            select_parts.extend(loop_clauses)
+        
+        # Create the final SQL query
+        joined_select_parts = ",\n        ".join(select_parts)
+        sql = f"""
+        /* 
+         * Combined transformation query for {source_table} -> {destination_table}
+         * This query combines all transformation steps into a single efficient operation
+         */
+        CREATE OR REPLACE TABLE `{destination_table}` AS
+        SELECT
+        {joined_select_parts}
+        FROM `{source_table}`
+        """
+        
+        # Save the SQL to GCS for audit purposes
+        try:
+            gcs_client = storage.Client()
+            gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}_combined.sql"
+            utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
+        except Exception as e:
+            utils.logger.exception(f"Error saving SQL: {e}")
+            raise e
+        
+        # Execute the SQL
+        try:
+            query_job = client.query(sql)
+            query_job.result()  # Wait for the query to finish
+            status = f"Table {destination_table} successfully created with all transformations applied"
+            utils.logger.info(status)
+            return {
+                "status": status,
+                "submitted_sql_path": constants.OUTPUT_SQL_PATH
+            }
+        except Exception as e:
+            utils.logger.exception(f"Error executing SQL: {e}")
+            raise e
     except Exception as e:
         utils.logger.exception(f"Error in process_columns: {e}")
-        # Try to clean up intermediate table in case of failure
-        try:
-            client = bigquery.Client(project=project)
-            client.query(f"DROP TABLE IF EXISTS `{intermediate_table}`")
-        except:
-            pass
         raise e
