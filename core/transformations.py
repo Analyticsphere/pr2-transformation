@@ -43,7 +43,6 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
     
     # Retrieve column names for each source table.
     for idx, table in enumerate(source_tables, start=1):
-        # cols = utils.get_column_names(client, table)
         cols = utils.get_valid_column_names(client=client, fq_table=table)
         if not cols:
             error_msg = f"No columns retrieved from table: {table}"
@@ -51,33 +50,67 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
             raise ValueError(error_msg)
         alias = f"v{idx}"
         aliases.append(alias)
-        table_columns[alias] = set(cols)
-
-    # Compute the common columns across all source tables.
-    common_columns = set.intersection(*table_columns.values())
+        table_columns[alias] = cols  # Keep as list to preserve order
     
-    # Compute unique columns per table.
-    unique_columns = {
-        alias: table_columns[alias] - common_columns
-        for alias in table_columns
-    }
+    # Create case-insensitive mappings for each table
+    case_maps = {}
+    for alias in aliases:
+        # Maps lowercase column names to their original cases
+        case_maps[alias] = {col.lower(): col for col in table_columns[alias]}
+    
+    # Compute common columns (case-insensitively)
+    common_columns_lower = set()
+    for alias in aliases:
+        lower_cols = set(case_maps[alias].keys())
+        if not common_columns_lower:
+            # First table - all columns are potentially common
+            common_columns_lower = lower_cols
+        else:
+            # Intersect with columns from this table
+            common_columns_lower = common_columns_lower.intersection(lower_cols)
+    
+    # Track processed columns to avoid duplicates
+    processed_columns_lower = set()
     
     # Build the SELECT clause.
     select_clauses = []
     
-    if common_columns:
+    # Handle common columns first
+    if common_columns_lower:
         select_clauses.append("-- Coalesced common columns")
-        alias_order = aliases[::-1]
-        for col in sorted(common_columns):
-            coalesce_expr = ", ".join(f"{alias}.{col}" for alias in alias_order)
-            select_clauses.append(f"COALESCE({coalesce_expr}) AS {col}")
-
+        for col_lower in sorted(common_columns_lower):
+            # Special case for Connect_ID
+            if col_lower == "connect_id":
+                output_name = "Connect_ID"
+            else:
+                output_name = col_lower
+                
+            coalesce_parts = []
+            for alias in aliases:
+                # Use the original case from each table
+                original_col = case_maps[alias][col_lower]
+                coalesce_parts.append(f"{alias}.{original_col}")
+                
+            select_clauses.append(f"COALESCE({', '.join(coalesce_parts)}) AS {output_name}")
+            processed_columns_lower.add(col_lower)
+    
+    # Handle unique columns per table
     for alias in aliases:
-        cols = unique_columns.get(alias)
-        if cols:
+        # Find columns not already processed
+        unique_cols = [col for col in table_columns[alias] 
+                      if col.lower() not in processed_columns_lower]
+        
+        if unique_cols:
             select_clauses.append(f"-- Unique columns from {alias}")
-            for col in sorted(cols):
-                select_clauses.append(f"{alias}.{col}")
+            for col in sorted(unique_cols):
+                # Standardize case in output name
+                if col == "Connect_ID":
+                    output_name = "Connect_ID"
+                else:
+                    output_name = col.lower()
+                
+                select_clauses.append(f"{alias}.{col} AS {output_name}")
+                processed_columns_lower.add(col.lower())
     
     base_alias = aliases[-1]
     base_table = source_tables[-1]
