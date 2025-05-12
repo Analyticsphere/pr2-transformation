@@ -350,3 +350,18 @@ def excise_substrings(var_name: str, substrings_to_excise: list[str]) -> str:
     for substring in substrings_to_excise:
         var_name = var_name.replace(substring, "")
     return var_name
+
+def standardize_column_case(column_name: str) -> str:
+    """
+    Standardizes column names to lowercase for consistency.
+    Preserves Connect_ID as-is since it's the special case.
+    
+    Args:
+        column_name: Original column name
+        
+    Returns:
+        Standardized column name
+    """
+    if column_name == "Connect_ID":
+        return column_name  # Preserve Connect_ID case
+    return column_name.lower()
