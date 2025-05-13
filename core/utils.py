@@ -8,7 +8,6 @@ from collections import defaultdict
 
 from google.cloud import bigquery, storage
 import pandas as pd #TODO Try to avoid using pandas
-import sqlparse
 
 import core.utils as utils
 import core.constants as constants
@@ -366,24 +365,3 @@ def standardize_column_case(column_name: str) -> str:
     if column_name == "Connect_ID":
         return column_name  # Preserve Connect_ID case
     return column_name.lower()
-
-def format_sql_query(sql):
-    """
-    Format a SQL query to ensure consistent indentation and style.
-    
-    Args:
-        sql (str): Raw SQL query string
-        
-    Returns:
-        str: Formatted SQL query
-    """
-    # Format the SQL with standard settings
-    formatted = sqlparse.format(
-        sql,
-        reindent=True,           # Add proper indentation
-        keyword_case='upper',    # Uppercase keywords
-        identifier_case=None,    # Leave identifiers as-is
-        strip_comments=False,    # Keep comments
-        indent_width=4           # 4-space indentation
-    )
-    return formatted

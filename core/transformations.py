@@ -596,9 +596,7 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         # Create the final SQL query
         joined_select_parts = ",\n        ".join(select_parts)
         sql = f"""
-        /* 
-         * Combined transformation query for {source_table} -> {destination_table}
-         */
+        /* Combined transformation query for {source_table} -> {destination_table} */
          
         CREATE OR REPLACE TABLE `{destination_table}` AS
         SELECT

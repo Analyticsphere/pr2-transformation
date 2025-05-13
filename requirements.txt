@@ -3,4 +3,3 @@ google-cloud-bigquery==3.30.0
 google-cloud-storage==3.1.0
 pandas==2.2.3
 gunicorn==23.0.0
-sqlparse==0.5.3
