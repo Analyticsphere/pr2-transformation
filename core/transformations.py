@@ -509,17 +509,17 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         
         # Add one-off renames with comment
         if one_off_clauses:
-            select_parts.append("\n-- Step 1: One-off column renames from constants")
+            select_parts.append("\n        -- Step 1: One-off column renames from constants")
             select_parts.extend(one_off_clauses)
         
         # Add substring removal clauses with comment
         if substring_clauses:
-            select_parts.append("\n-- Step 2: Substring removal (state_, _num, etc.)")
+            select_parts.append("\n        -- Step 2: Substring removal (state_, _num, etc.)")
             select_parts.extend(substring_clauses)
         
         # Add loop variable clauses with comment
         if loop_clauses:
-            select_parts.append("\n-- Step 3: Loop variable processing")
+            select_parts.append("\n        -- Step 3: Loop variable processing")
             select_parts.extend(loop_clauses)
         
         # Create the final SQL query
@@ -527,11 +527,11 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         sql = f"""
         /* 
          * Combined transformation query for {source_table} -> {destination_table}
-         * This query combines all transformation steps into a single efficient operation
          */
+         
         CREATE OR REPLACE TABLE `{destination_table}` AS
         SELECT
-        {joined_select_parts}
+            {joined_select_parts}
         FROM `{source_table}`
         """
         

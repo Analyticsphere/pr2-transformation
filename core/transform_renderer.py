@@ -1,74 +1,92 @@
-"""
-Provides utilities for rendering SQL SELECT expressions from configurable
-transformation templates.
+import core.utils as utils
+import core.constants as constants
 
-This module is designed to support flexible one-off data transformations
-using parameterized SQL templates. It supports:
+def validate_transform_dict(transform_dict):
+    """
+    Validates the structure of a transform dictionary.
 
-- One-to-one, many-to-one (coalesce), and one-to-many (split) mappings
-- Indexed placeholders such as {source[0]} or {target[1]} for list-based inputs
-- Clean formatting with automatic trailing comma removal and line splitting
+    Args:
+        transform_dict (dict): Dictionary to validate.
 
-Used in conjunction with a dictionary of custom transformation entries
-(e.g., in `constants.py`) to dynamically build SQL statements.
-"""
+    Raises:
+        ValueError: If the structure is invalid.
+    """
+    if not isinstance(transform_dict, dict):
+        raise ValueError("Top-level object must be a dictionary")
 
-class FormatDict(dict):
-  """
-  Custom dictionary to support indexed placeholders like {source[0]} and {target[1]}.
-  """
-  def __getitem__(self, key):
-      if key.startswith("source["):
-          idx = int(key[len("source["):-1])
-          return self['source'][idx]
-      elif key.startswith("target["):
-          idx = int(key[len("target["):-1])
-          return self['target'][idx]
-      else:
-          return super().__getitem__(key)
+    for table, transforms in transform_dict.items():
+        if not isinstance(transforms, list):
+            raise ValueError(f"Value for key '{table}' must be a list of transformations")
 
-class SQLTransformRenderer:
-  @staticmethod
-  def render(entry: dict) -> list[str]:
-      """
-      Renders SQL select expressions from a custom transformation entry.
+        for i, transform in enumerate(transforms):
+            if not isinstance(transform, dict):
+                raise ValueError(f"Transform #{i} in '{table}' must be a dictionary")
 
-      Supports:
-      - One-to-one: a single source maps to a single target
-      - Many-to-one: multiple sources are coalesced into one target
-      - One-to-many: a single source is split into multiple targets
-      - Indexed formatting: allows {source[0]}, {target[1]}, etc. in the SQL template
+            for key in ("source", "target", "transform_template"):
+                if key not in transform:
+                    raise ValueError(f"Missing required key '{key}' in transform #{i} of '{table}'")
 
-      Args:
-          entry (dict): A transformation entry with keys:
-              - source (str or list[str]): Input column(s)
-              - target (str or list[str]): Output column(s)
-              - transform_template (str): SQL snippet using Python format syntax
+            source = transform["source"]
+            target = transform["target"]
+            template = transform["transform_template"]
 
-      Returns:
-          list[str]: Rendered SQL expression(s), one per SELECT clause line
+            if not (isinstance(source, str) or (isinstance(source, list) and all(isinstance(s, str) for s in source))):
+                raise ValueError(f"'source' in transform #{i} of '{table}' must be a string or list of strings")
 
-      Example:
-      --------
-      >>> entry = {
-      ...     "source": ["D_123456789", "D_987654321"],
-      ...     "target": "D_123456789_coalesced",
-      ...     "transform_template": "COALESCE({source[0]}, {source[1]}) AS {target},"
-      ... }
-      >>> SQLTransformRenderer.render(entry)
-      ['COALESCE(D_123456789, D_987654321) AS D_123456789_coalesced']
-      """
-      source = entry["source"]
-      target = entry["target"]
-      template = entry["transform_template"]
+            if not (isinstance(target, str) or (isinstance(target, list) and all(isinstance(t, str) for t in target))):
+                raise ValueError(f"'target' in transform #{i} of '{table}' must be a string or list of strings")
 
-      source_list = source if isinstance(source, list) else [source]
-      target_list = target if isinstance(target, list) else [target]
+            if not callable(template):
+                raise ValueError(f"'transform_template' in transform #{i} of '{table}' must be a callable")
 
-      context = FormatDict({
-          "source": source_list,
-          "target": target_list
-      })
+            # Optional: try calling the template
+            try:
+                result = template(source, target)
+                if not (isinstance(result, str) or (isinstance(result, list) and all(isinstance(line, str) for line in result))):
+                    raise ValueError(f"'transform_template' in transform #{i} of '{table}' must return a string or list of strings")
+            except Exception as e:
+                raise ValueError(f"Error calling transform_template in '{table}' transform #{i}: {e}")
 
-      rendered = template.format_map(context).strip().rstrip(',')
-      return [line.strip().rstrip(',') for line in rendered.splitlines() if line.strip()]
+def render_transforms(transform_dict):
+    """
+    Render SQL expressions from the transform dictionary.
+
+    Handles 1:1, many:1, and 1:many mappings.
+
+    Args:
+        transform_dict (dict): Keys are table names, values are lists of transformation dicts.
+
+    Returns:
+        dict: {table_name: [sql_expressions]}
+    """
+
+    try:
+        validate_transform_dict(transform_dict)
+        utils.logger.info("Transform dictionary is valid!")
+    except ValueError as e:
+        utils.logger.error(f"Validation of transform dictionary failed: {e}")
+
+    rendered_sql = {}
+
+    for table, transforms in transform_dict.items():
+        rendered_sql[table] = []
+        for transform in transforms:
+            source = transform["source"]
+            target = transform["target"]
+            sql = transform["transform_template"](source, target)
+            if isinstance(sql, str):
+                rendered_sql[table].append(sql.strip())
+            elif isinstance(sql, list):
+                rendered_sql[table].extend([line.strip() for line in sql])
+            else:
+                raise ValueError("transform_template must return a string or list of strings")
+
+    return rendered_sql
+
+if __name__ == "__main__":
+
+    sql_out = render_transforms(constants.CUSTOM_TRANSFORMS)
+    for table, sql_expressions in sql_out.items():
+        print(f"\n-- Transforms for {table}")
+        for expr in sql_expressions:
+            print(expr)  # each expr already includes line breaks
