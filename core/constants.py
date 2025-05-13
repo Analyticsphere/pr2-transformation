@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+import textwrap
 
 # -----------------------------------------------------------------------------
 # Global Constants
@@ -128,5 +129,36 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "d_71558179_v2_8_8", "target": "d_715581797_8_v2", "description": ""}, 
         {"source": "d_71558179_v2_9_9", "target": "d_715581797_9_v2", "description": ""}, 
         {"source": "d_71558179_v2_10_10", "target": "d_715581797_10_v2", "description": ""}
+    ]
+}
+
+CUSTOM_TRANSFORMS = {
+    # https://github.com/Analyticsphere/pr2-documentation/issues/4
+    "FlatConnect.module1_v2_JP": [
+        {
+            "source": "D_317093647",
+            "target": "D_317093647_D_623218391",
+            "transform_template": lambda source, target: textwrap.dedent(f"""\
+                -- Extract "Age at Surgery" as SrvBOH_MomEsCancAge_v1r0: match 1-3 digits (e.g., 55, 125)
+                CASE
+                    WHEN REGEXP_CONTAINS({source}, r'^\\d{{1,3}}$')      -- Match 1-3 digits
+                        AND CAST({source} AS INT64) BETWEEN 0 AND 125    -- Valid age range
+                        THEN CAST({source} AS INT64)                     -- Convert to integer
+                    ELSE NULL                                            -- Default to NULL
+                END AS {target}
+            """)
+        },
+        {
+            "source": "D_317093647",
+            "target": "D_317093647_D_802622485",
+            "transform_template": lambda source, target: textwrap.dedent(f"""\
+                -- Extract "Year at Surgery" as SrvBOH_MomEsCancYr_v1r1: match exactly 4 digits (e.g., 1987)
+                CASE
+                    WHEN REGEXP_CONTAINS({source}, r'^\\d{{4}}$')       -- Match exactly 4 digits
+                        THEN CAST({source} AS INT64)                    -- Convert to integer
+                    ELSE NULL                                           -- Default to NULL
+                END AS {target}
+            """)
+        }
     ]
 }

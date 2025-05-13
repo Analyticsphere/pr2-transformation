@@ -1,9 +1,11 @@
 '''Module to compose SQL to execute data transformations.'''
 
+import re
 from google.cloud import bigquery
 from google.cloud import storage
 import core.constants as constants
 import core.utils as utils
+import core.transform_renderer as transform_renderer
 
 def merge_table_versions(source_tables: list[str], destination_table: str) -> dict:
     """
@@ -160,10 +162,7 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
         "submitted_sql_path": constants.OUTPUT_SQL_PATH
     }
 
-def build_one_off_renames_clauses(
-    client: bigquery.Client, 
-    source_table: str, 
-    processed_columns: set) -> tuple[list, set]:
+def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for one-off column renames from constants.
     
@@ -267,10 +266,7 @@ def build_one_off_renames_clauses(
     
     return select_clauses, processed_columns
 
-def build_substring_removal_clauses(
-    client: bigquery.Client, 
-    source_table: str, 
-    processed_columns: set) -> tuple[list, set]:
+def build_substring_removal_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for removing substrings defined in constants.SUBSTRINGS_TO_FIX.
     
@@ -357,10 +353,71 @@ def build_substring_removal_clauses(
     
     return select_clauses, processed_columns
 
-def build_loop_variable_clauses(
-    client: bigquery.Client, 
-    source_table: str, 
-    processed_columns: set) -> tuple[list, set]:
+def build_custom_transform_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+    """
+    Builds SELECT clauses for custom column transformations defined in constants.CUSTOM_TRANSFORMS.
+    
+    Args:
+        client: BigQuery client
+        source_table: Source table name
+        processed_columns: Set of already processed column names (lowercase)
+        
+    Returns:
+        tuple: (list of SELECT clauses, updated set of processed columns)
+    """
+    
+    
+    select_clauses = []
+    
+    # Get table identifier for transforms lookup
+    project, dataset, table = utils.parse_fq_table(source_table)
+    # Look up both with and without project prefix since constants might have either format
+    table_identifiers = [
+        f"{dataset}.{table}",  # dataset.table format
+        source_table  # full project.dataset.table format
+    ]
+    
+    # Check if we have any transforms for this table
+    transform_dict = {}
+    for table_id in table_identifiers:
+        if table_id in constants.CUSTOM_TRANSFORMS:
+            transform_dict = {table_id: constants.CUSTOM_TRANSFORMS[table_id]}
+            utils.logger.info(f"Found {len(constants.CUSTOM_TRANSFORMS[table_id])} custom transforms for {table_id}")
+            break
+    
+    if not transform_dict:
+        utils.logger.info(f"No custom transforms found for {source_table}")
+        return select_clauses, processed_columns
+    
+    try:
+        # Render the SQL expressions for the transforms
+        rendered_sql = transform_renderer.render_transforms(transform_dict)
+        
+        # Process each rendered SQL expression
+        for table_id, sql_expressions in rendered_sql.items():
+            for expr in sql_expressions:
+                # Extract target column name from the expression (assuming it ends with "AS column_name")
+                target_match = re.search(r'AS\s+([^\s,]+)\s*$', expr)
+                if target_match:
+                    target_column = target_match.group(1)
+                    
+                    # Skip if target column would create a duplicate
+                    if target_column.lower() in processed_columns:
+                        utils.logger.info(f"Skipping custom transform for {target_column} as it would create a duplicate")
+                        continue
+                    
+                    # Add the expression to our clauses
+                    select_clauses.append(expr)
+                    processed_columns.add(target_column.lower())
+                else:
+                    utils.logger.warning(f"Could not extract target column from custom transform: {expr}")
+    except Exception as e:
+        utils.logger.error(f"Error rendering custom transforms: {e}")
+        # Continue with the pipeline even if there's an error with custom transforms
+    
+    return select_clauses, processed_columns
+
+def build_loop_variable_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for loop variable processing.
     
@@ -462,7 +519,8 @@ def process_columns(source_table: str, destination_table: str) -> dict:
     that combines all transformation steps:
     1. One-off column renames
     2. Substring removal (state_, _num, etc.)
-    3. Loop variable processing
+    3. Custom column transformations
+    4. Loop variable processing
     
     Args:
         source_table (str): A fully qualified BigQuery table (e.g., "project.dataset.table").
@@ -494,7 +552,12 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         substring_clauses, processed_columns = build_substring_removal_clauses(
             client, source_table, processed_columns)
         
-        # Step 3: Build clauses for loop variable processing
+        # Step 3: Build clauses for custom column transformations
+        utils.logger.info("Step 3: Building custom transformation clauses")
+        custom_transform_clauses, processed_columns = build_custom_transform_clauses(
+            client, source_table, processed_columns)
+        
+        # Step 4: Build clauses for loop variable processing
         utils.logger.info("Step 3: Building loop variable processing clauses")
         loop_clauses, processed_columns = build_loop_variable_clauses(
             client, source_table, processed_columns)
@@ -509,32 +572,35 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         
         # Add one-off renames with comment
         if one_off_clauses:
-            select_parts.append("\n-- Step 1: One-off column renames from constants")
+            select_parts.append("\n        -- Step 1: One-off column renames from constants")
             select_parts.extend(one_off_clauses)
         
         # Add substring removal clauses with comment
         if substring_clauses:
-            select_parts.append("\n-- Step 2: Substring removal (state_, _num, etc.)")
+            select_parts.append("\n        -- Step 2: Substring removal (state_, _num, etc.)")
             select_parts.extend(substring_clauses)
+
+        # Add custom transformation clauses with comment
+        if custom_transform_clauses:
+            select_parts.append("\n        -- Step 3: Custom column transformations")
+            select_parts.extend(custom_transform_clauses)
         
         # Add loop variable clauses with comment
         if loop_clauses:
-            select_parts.append("\n-- Step 3: Loop variable processing")
+            select_parts.append("\n        -- Step 4: Loop variable processing")
             select_parts.extend(loop_clauses)
         
         # Create the final SQL query
         joined_select_parts = ",\n        ".join(select_parts)
         sql = f"""
-        /* 
-         * Combined transformation query for {source_table} -> {destination_table}
-         * This query combines all transformation steps into a single efficient operation
-         */
+        /* Combined transformation query for {source_table} -> {destination_table} */
+         
         CREATE OR REPLACE TABLE `{destination_table}` AS
         SELECT
-        {joined_select_parts}
+            {joined_select_parts}
         FROM `{source_table}`
         """
-        
+
         # Save the SQL to GCS for audit purposes
         try:
             gcs_client = storage.Client()
