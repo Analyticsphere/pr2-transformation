@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+import textwrap
 
 # -----------------------------------------------------------------------------
 # Global Constants
@@ -130,8 +131,6 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
         {"source": "d_71558179_v2_10_10", "target": "d_715581797_10_v2", "description": ""}
     ]
 }
-
-import textwrap
 
 CUSTOM_TRANSFORMS = {
     # https://github.com/Analyticsphere/pr2-documentation/issues/4

@@ -1,3 +1,5 @@
+'''Module for rendering SQL transform templates.'''
+
 import core.utils as utils
 import core.constants as constants
 
@@ -39,14 +41,6 @@ def validate_transform_dict(transform_dict):
             if not callable(template):
                 raise ValueError(f"'transform_template' in transform #{i} of '{table}' must be a callable")
 
-            # Optional: try calling the template
-            try:
-                result = template(source, target)
-                if not (isinstance(result, str) or (isinstance(result, list) and all(isinstance(line, str) for line in result))):
-                    raise ValueError(f"'transform_template' in transform #{i} of '{table}' must return a string or list of strings")
-            except Exception as e:
-                raise ValueError(f"Error calling transform_template in '{table}' transform #{i}: {e}")
-
 def render_transforms(transform_dict):
     """
     Render SQL expressions from the transform dictionary.
@@ -59,12 +53,12 @@ def render_transforms(transform_dict):
     Returns:
         dict: {table_name: [sql_expressions]}
     """
-
     try:
         validate_transform_dict(transform_dict)
         utils.logger.info("Transform dictionary is valid!")
     except ValueError as e:
         utils.logger.error(f"Validation of transform dictionary failed: {e}")
+        raise
 
     rendered_sql = {}
 
@@ -73,20 +67,19 @@ def render_transforms(transform_dict):
         for transform in transforms:
             source = transform["source"]
             target = transform["target"]
-            sql = transform["transform_template"](source, target)
-            if isinstance(sql, str):
-                rendered_sql[table].append(sql.strip())
-            elif isinstance(sql, list):
-                rendered_sql[table].extend([line.strip() for line in sql])
-            else:
-                raise ValueError("transform_template must return a string or list of strings")
+            
+            try:
+                sql = transform["transform_template"](source, target)
+                if isinstance(sql, str):
+                    rendered_sql[table].append(sql.strip())
+                elif isinstance(sql, list):
+                    rendered_sql[table].extend([line.strip() for line in sql])
+                else:
+                    utils.logger.error(f"Invalid return type from transform_template in {table}: must be string or list")
+                    raise ValueError("transform_template must return a string or list of strings")
+            except Exception as e:
+                utils.logger.error(f"Error rendering transform in {table} for {source} -> {target}: {e}")
+                raise
 
     return rendered_sql
 
-if __name__ == "__main__":
-
-    sql_out = render_transforms(constants.CUSTOM_TRANSFORMS)
-    for table, sql_expressions in sql_out.items():
-        print(f"\n-- Transforms for {table}")
-        for expr in sql_expressions:
-            print(expr)  # each expr already includes line breaks
