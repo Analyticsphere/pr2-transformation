@@ -139,9 +139,6 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
 
     final_query = f"CREATE OR REPLACE TABLE `{destination_table}` AS ({inner_query})"
 
-    # Format the SQL for better readability
-    final_query = utils.format_sql_query(final_query)
-
     # Save the SQL to GCS Bucket for audit purposes
     try:
         gcs_client = storage.Client()
@@ -603,9 +600,6 @@ def process_columns(source_table: str, destination_table: str) -> dict:
             {joined_select_parts}
         FROM `{source_table}`
         """
-
-        # Format the SQL for better readability
-        sql = utils.format_sql_query(sql)
 
         # Save the SQL to GCS for audit purposes
         try:
