@@ -497,7 +497,14 @@ def build_loop_variable_clauses(client: bigquery.Client, source_table: str, proc
         
         # Standardize case for the new variable name
         new_var_name = utils.standardize_column_case(new_var_name)
-        
+    
+        # If the column name has a version tag, e.g., _v2, ensure that it is at the end of the column name
+        has_version_tag = utils.extract_version_suffix(new_var_name) != ""
+        if has_version_tag:
+            new_var_nam_sans_version_tag = utils.excise_version_from_column_name(new_var_name)
+            version_tag = utils.extract_version_suffix(new_var_name)
+            new_var_name = new_var_nam_sans_version_tag + version_tag
+
         # Skip this variable if it would create a duplicate
         if new_var_name.lower() in processed_columns:
             utils.logger.info(f"Skipping output column {new_var_name} as it would create a duplicate")
