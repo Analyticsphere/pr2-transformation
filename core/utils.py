@@ -388,7 +388,7 @@ def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
             return []
         
         # Step 2: Process in smaller batches to avoid excessive query size
-        batch_size = 50
+        batch_size = 500
         binary_columns = []
         
         for i in range(0, len(columns), batch_size):
@@ -402,9 +402,10 @@ def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
                 ) = 0 AS `{col}`"""
                 checks.append(check_expr)
             
+            joined_checks = ',\n'.join(checks)
             batch_query = f"""
                 SELECT
-                    {',\n'.join(checks)}
+                    {joined_checks}
                 FROM `{fq_table}`
             """
             
