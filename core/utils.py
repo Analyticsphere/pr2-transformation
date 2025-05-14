@@ -367,73 +367,64 @@ def standardize_column_case(column_name: str) -> str:
     return column_name.lower()
 
 def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
-    """
-    Identifies binary STRING columns in a BigQuery table.
-    A column is considered binary if it only contains the values "0", "1", NULL, or "".
-    
-    Parameters:
-        fq_table (str): "<project_id>.<dataset_id>.<table_id>"
-        client (bigquery.Client, optional): Pre-initialized BigQuery client.
-        
-    Returns:
-        list: List of column names that are binary.
-    """
     if client is None:
         client = bigquery.Client()
     
     project_id, dataset_id, table_id = parse_fq_table(fq_table)
+    utils.logger.info(f"Starting binary column detection for {fq_table}")
     
-    # Step 1: Get STRING columns from INFORMATION_SCHEMA
+    # Step 1: Get STRING columns
     schema_query = f"""
         SELECT column_name
         FROM `{project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
         WHERE table_name = '{table_id}' AND data_type = 'STRING'
     """
-    columns = [row.column_name for row in client.query(schema_query).result()]
-    
-    if not columns:
-        return []  # Return empty list if no string columns exist
-    
-    # Step 2: Construct binary check expressions with proper spacing
-    checks = []
-    for col in columns:
-        check_expr = f"""COUNTIF(
-            NOT (`{col}` = "0" OR `{col}` = "1" OR `{col}` IS NULL OR `{col}` = "")
-        ) = 0 AS `{col}`"""  # Make sure there's a space before AS
-        checks.append(check_expr)
-    
-    # Step 3: Build final query
-    joined_checks = ',\n            '.join(checks)
-    check_query = f"""
-        SELECT
-            {joined_checks}
-        FROM `{fq_table}`
-    """
-    
-    # For debugging, write the complete query to a file
-    with open("binary_check_query.sql", "w") as f:
-        f.write(check_query)
     
     try:
-        # Step 4: Run query
-        query_job = client.query(check_query)
-        result = query_job.result()
+        columns = [row.column_name for row in client.query(schema_query).result()]
+        utils.logger.info(f"Found {len(columns)} STRING columns")
         
-        # Convert to DataFrame
-        result_df = result.to_dataframe().transpose()
-        result_df.columns = ['is_binary']
-        result_df.reset_index(inplace=True)
-        result_df.rename(columns={'index': 'column_name'}, inplace=True)
+        if not columns:
+            return []
         
-        # Filter only binary columns and extract as list
-        binary_columns = result_df[result_df['is_binary'] == True]['column_name'].tolist()
+        # Step 2: Process in smaller batches to avoid excessive query size
+        batch_size = 50
+        binary_columns = []
         
+        for i in range(0, len(columns), batch_size):
+            batch = columns[i:i+batch_size]
+            utils.logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} columns")
+            
+            checks = []
+            for col in batch:
+                check_expr = f"""COUNTIF(
+                    NOT (`{col}` = "0" OR `{col}` = "1" OR `{col}` IS NULL OR `{col}` = "")
+                ) = 0 AS `{col}`"""
+                checks.append(check_expr)
+            
+            batch_query = f"""
+                SELECT
+                    {',\n'.join(checks)}
+                FROM `{fq_table}`
+            """
+            
+            batch_result = client.query(batch_query).result()
+            batch_df = batch_result.to_dataframe().transpose()
+            batch_df.columns = ['is_binary']
+            batch_df.reset_index(inplace=True)
+            batch_df.rename(columns={'index': 'column_name'}, inplace=True)
+            
+            batch_binary = batch_df[batch_df['is_binary'] == True]['column_name'].tolist()
+            binary_columns.extend(batch_binary)
+            
+            utils.logger.info(f"Found {len(batch_binary)} binary columns in this batch")
+        
+        utils.logger.info(f"Total binary columns detected: {len(binary_columns)}")
         return binary_columns
-    
+        
     except Exception as e:
         utils.logger.error(f"Error in binary column detection: {str(e)}")
-        utils.logger.error(f"Query that failed: {check_query}")
-        # If there's an error, it's safer to return an empty list
+        utils.logger.error(f"Exception type: {type(e).__name__}")
         return []
 
 def render_convert_0_1_to_yes_no_cids_expression(col_name: str) -> str:
