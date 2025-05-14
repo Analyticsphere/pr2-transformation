@@ -741,6 +741,6 @@ def process_rows(source_table: str, destination_table: str) -> dict:
         raise e
 
 if __name__ == "__main__":
-    source_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1"
+    source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
     destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary"
     process_rows(source_table=source_table, destination_table=destination_table)

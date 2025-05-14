@@ -431,7 +431,8 @@ def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
         return binary_columns
     
     except Exception as e:
-        print(f"Error in binary column detection: {str(e)}")
+        utils.logger.error(f"Error in binary column detection: {str(e)}")
+        utils.logger.error(f"Query that failed: {check_query}")
         # If there's an error, it's safer to return an empty list
         return []
 
