@@ -402,10 +402,11 @@ def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
         ) = 0 AS `{col}`"""  # Make sure there's a space before AS
         checks.append(check_expr)
     
-      # Step 3: Build final query - Fix: Use an explicit newline + indent instead of \n
+    # Step 3: Build final query
+    joined_checks = ',\n            '.join(checks)
     check_query = f"""
         SELECT
-            {','.join(['\n            ' + check for check in checks])}
+            {joined_checks}
         FROM `{fq_table}`
     """
     
