@@ -365,3 +365,102 @@ def standardize_column_case(column_name: str) -> str:
     if column_name == "Connect_ID":
         return column_name  # Preserve Connect_ID case
     return column_name.lower()
+
+def get_binary_columns(client: bigquery.Client, fq_table: str) -> list:
+    """
+    Identifies binary STRING columns in a BigQuery table.
+    A column is considered binary if it only contains the values "0", "1", NULL, or "".
+    
+    Parameters:
+        fq_table (str): "<project_id>.<dataset_id>.<table_id>"
+        client (bigquery.Client, optional): Pre-initialized BigQuery client.
+        
+    Returns:
+        list: List of column names that are binary.
+    """
+    if client is None:
+        client = bigquery.Client()
+    
+    project_id, dataset_id, table_id = parse_fq_table(fq_table)
+    
+    # Step 1: Get STRING columns from INFORMATION_SCHEMA
+    schema_query = f"""
+        SELECT column_name
+        FROM `{project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
+        WHERE table_name = '{table_id}' AND data_type = 'STRING'
+    """
+    columns = [row.column_name for row in client.query(schema_query).result()]
+    
+    if not columns:
+        return []  # Return empty list if no string columns exist
+    
+    # Step 2: Construct binary check expressions with proper spacing
+    checks = []
+    for col in columns:
+        check_expr = f"""COUNTIF(
+            NOT (`{col}` = "0" OR `{col}` = "1" OR `{col}` IS NULL OR `{col}` = "")
+        ) = 0 AS `{col}`"""  # Make sure there's a space before AS
+        checks.append(check_expr)
+    
+    # Step 3: Build final query
+    check_query = f"""
+        SELECT
+            {',\n            '.join(checks)}
+        FROM `{fq_table}`
+    """
+    
+    # For debugging, write the complete query to a file
+    with open("binary_check_query.sql", "w") as f:
+        f.write(check_query)
+    
+    try:
+        # Step 4: Run query
+        query_job = client.query(check_query)
+        result = query_job.result()
+        
+        # Convert to DataFrame
+        result_df = result.to_dataframe().transpose()
+        result_df.columns = ['is_binary']
+        result_df.reset_index(inplace=True)
+        result_df.rename(columns={'index': 'column_name'}, inplace=True)
+        
+        # Filter only binary columns and extract as list
+        binary_columns = result_df[result_df['is_binary'] == True]['column_name'].tolist()
+        
+        return binary_columns
+    
+    except Exception as e:
+        print(f"Error in binary column detection: {str(e)}")
+        # If there's an error, it's safer to return an empty list
+        return []
+
+def render_convert_0_1_to_yes_no_cids_expression(col_name: str) -> str:
+    """
+    Generate a SQL CASE expression that replaces binary string values "0"/"1"
+    with standardized concept IDs for "No" and "Yes", respectively.
+
+    Concept ID mapping:
+      - "1" → "353358909" (Yes)
+      - "0" → "104430631" (No)
+
+    This is used for select-all-that-apply survey questions that have
+    been flattened to binary columns during ETL.
+
+    Parameters:
+        col_name (str): The name of the column to transform.
+
+    Returns:
+        str: A SQL CASE expression with aliasing, ready to be inserted into a SELECT clause.
+    
+    Example:
+        render_convert_0_1_to_yes_no_cids_expression("D_12345")
+        → CASE WHEN D_12345 = "1" THEN "353358909" ...
+    """
+    return f"""CASE
+        WHEN {col_name} = "1" THEN "353358909" -- CID for Yes
+        WHEN {col_name} = "0" THEN "104430631" -- CID for No
+        WHEN {col_name} IS NULL THEN NULL
+        WHEN {col_name} = "" THEN NULL
+        ELSE NULL
+    END AS {col_name}
+    """.strip() 
