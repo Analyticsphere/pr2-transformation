@@ -459,42 +459,168 @@ def render_convert_0_1_to_yes_no_cids_expression(col_name: str) -> str:
     END AS {col_name}
     """.strip() 
 
-def is_false_array(x: str) -> bool:
+def format_false_array_condition(col: str, false_values: list[str]) -> str:
     """
-    Determine whether a sequence of values (x) qualifies as a "false array".
-    GitHub Issue: https://github.com/Analyticsphere/bq2/issues/6
-
-    A "false array" is defined here as having:
-      - At most 3 unique non-missing values.
-      - All unique values (including missing values) are among the allowed valid_values.
-      - At most one unique value that matches a nine-digit concept ID in the form "[123456789]".
+    Build a COUNTIF condition to ensure all values in a column are either NULL or in a list of false-like values.
 
     Parameters:
-        x (iterable): A list (or Pandas Series) of string values.
-        valid_values (list, optional): A list of allowed values. Defaults to:
-            [None, "[]", "[178420302]", "[958239616]"]
+        col (str): The column name.
+        false_values (list): List of false-like string values.
 
     Returns:
-        bool: True if x qualifies as a false array, False otherwise.
+        str: SQL expression for false array validation.
     """
-    valid_values = constants.VALID_VALUES_FOR_FALSE_ARRAYS
+    value_checks = [f'`{col}` = "{v}"' for v in false_values]
+    null_check = f'`{col}` IS NULL'
+    return f"""COUNTIF(
+        NOT (
+            {null_check}
+            OR {' OR '.join(value_checks)}
+        )
+    ) = 0"""
 
-    # Get unique values; convert to list so order doesn't matter.
-    unique_values = list(set(x))
+def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch_size=500) -> list:
+    """
+    Optimized version of get_strict_false_array_columns that uses a UNION ALL approach
+    in batches to avoid hitting query length limits.
     
-    # Filter out missing values using pd.isna() (works for both None and np.nan)
-    non_missing = [v for v in unique_values if not pd.isna(v)]
-    num_unique = len(non_missing)
+    This function performs all three conditions of false array detection:
+    1. ≤ 3 distinct values
+    2. Only contains specific values or NULL as specified in constants module
+    3. ≤ 1 unique value matching the bracketed 9-digit pattern
+    **The function explicitly excludes the "Connect_ID" column from processing.
     
-    # Condition 1: At most 3 unique non-missing values.
-    cond1 = num_unique <= 3
-    
-    # Condition 2: All values (including missing) must be in valid_values.
-    # For missing values, pd.isna(v) is True.
-    cond2 = all((v in valid_values) or pd.isna(v) for v in unique_values)
-    
-    # Condition 3: At most one unique value matches the nine-digit concept pattern within brackets, e.g., "[178420302]".
-    pattern = re.compile(r"\[\d{9}\]")
-    cond3 = sum(1 for v in unique_values if (not pd.isna(v)) and pattern.search(v)) <= 1
+    Args:
+        client (bigquery.Client): BigQuery client
+        fq_table (str): Fully qualified table name
+        batch_size (int): Number of columns to process in each batch
+        
+    Returns:
+        list: Column names that satisfy all false array conditions
+    """
+    if client is None:
+        client = bigquery.Client()
 
-    return cond1 and cond2 and cond3
+    project_id, dataset_id, table_id = utils.parse_fq_table(fq_table)
+    utils.logger.info(f"Starting batched optimized strict false array detection for {fq_table}")
+
+    # Step 1: Get STRING columns
+    schema_query = f"""
+        SELECT column_name
+        FROM `{project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
+        WHERE table_name = '{table_id}' AND data_type = 'STRING'
+    """
+
+    try:
+        columns = [row.column_name for row in client.query(schema_query).result()]
+        utils.logger.info(f"Found {len(columns)} STRING columns")
+
+        if not columns:
+            return []
+        
+        # Explicitly exclude "Connect_ID" from processing
+        columns = [col for col in columns if col != "Connect_ID"]
+        utils.logger.info(f"Processing {len(columns)} columns after excluding Connect_ID")
+        
+        strict_false_columns = []
+        
+        # Process columns in batches to avoid excessive query size
+        for i in range(0, len(columns), batch_size):
+            batch = columns[i:i+batch_size]
+            utils.logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} columns")
+            
+            # Build the UNION ALL query for this batch
+            subqueries = []
+            for col in batch:
+                # Condition 1: ≤ 3 unique values
+                unique_value_check = f"""
+                    SELECT 
+                        '{col}' AS column_name,
+                        'unique_count' AS check_type,
+                        ARRAY_LENGTH(ARRAY(SELECT DISTINCT `{col}` FROM `{fq_table}`)) <= 3 AS passes_check
+                """
+                
+                # Condition 2: only false or NULL values
+                false_check = f"""
+                    SELECT 
+                        '{col}' AS column_name,
+                        'false_values' AS check_type,
+                        {format_false_array_condition(col, constants.FALSE_ARRAY_VALUES)} AS passes_check
+                """
+                
+                # Condition 3: ≤ 1 bracketed 9-digit concept ID
+                regex_check = f"""
+                    SELECT 
+                        '{col}' AS column_name,
+                        'regex_pattern' AS check_type,
+                        ARRAY_LENGTH(
+                            ARRAY(
+                                SELECT DISTINCT `{col}`
+                                FROM `{fq_table}`
+                                WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
+                            )
+                        ) <= 1 AS passes_check
+                """
+                
+                # Add all three checks for this column
+                subqueries.extend([unique_value_check, false_check, regex_check])
+            
+            # Combine all subqueries for this batch with UNION ALL
+            combined_query = " UNION ALL ".join(subqueries)
+            
+            utils.logger.info(f"Executing combined query to check batch with {len(subqueries)} individual checks")
+            
+            # Execute the combined query
+            results_df = client.query(combined_query).to_dataframe()
+            
+            # Pivot the results to see which columns pass all three checks
+            # Group by column_name and check if all checks pass
+            if not results_df.empty:
+                aggregated_results = results_df.groupby('column_name')['passes_check'].all()
+                
+                # Get columns that pass all checks
+                batch_strict_false_columns = aggregated_results[aggregated_results].index.tolist()
+                strict_false_columns.extend(batch_strict_false_columns)
+                
+                utils.logger.info(f"Found {len(batch_strict_false_columns)} strict false array columns in this batch")
+            else:
+                utils.logger.warning(f"Empty results for batch {i//batch_size + 1}")
+        
+        utils.logger.info(f"Total strict false array columns detected: {len(strict_false_columns)}")
+        return strict_false_columns
+
+    except Exception as e:
+        utils.logger.error(f"Error in optimized strict false array detection: {str(e)}")
+        utils.logger.error(f"Exception type: {type(e).__name__}")
+        utils.logger.error(f"Exception args: {e.args}")
+        return []
+    
+def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str:
+    """
+    Render a SQL expression to handle survey unwrapping singleton values from variables stored as "false arrays".
+
+    This function returns a SQL snippet that:
+      - Returns NULL when the column's value equals "[]"
+      - Returns the unbracketed nine-digit concept_id when the value is in the form "[123456789]"
+      - Returns the provided default value (cast as a string) when the value does not match the nine-digit pattern
+      - Assigns an alias to the expression using the provided column name
+
+    Parameters:
+        col_name (str): The column name to be processed.
+        default_value (str): The default SQL literal to return when the pattern is not matched.
+                             (For example, a numeric default as 0, or a string default as "'ERROR!'").
+                             The default value will be cast to STRING.
+
+    Returns:
+        str: A SQL snippet containing the CASE expression with an alias assignment.
+    """
+    
+    sql = \
+        rf"""CASE
+            WHEN {col_name} = "[]" THEN NULL
+            WHEN REGEXP_CONTAINS({col_name}, r'\[\d{{9}}\]') THEN REGEXP_REPLACE({col_name}, r'\[(\d{{9}})\]', r'\1') -- remove brackets around CID
+            WHEN {col_name} IS NULL THEN NULL
+            ELSE CAST({default_value} AS STRING)
+        END AS {col_name}"""
+        
+    return sql

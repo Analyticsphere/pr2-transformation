@@ -676,6 +676,10 @@ def process_rows(source_table: str, destination_table: str) -> dict:
     utils.logger.info("Identifying binary columns...")
     binary_columns = utils.get_binary_columns(client=client, fq_table=source_table)
     utils.logger.info(f"Found {len(binary_columns)} binary columns")
+
+    utils.logger.info("Identifying false array columns...")
+    false_array_columns = utils.get_strict_false_array_columns(client=client, fq_table=source_table)
+    utils.logger.info(f"Found {len(false_array_columns)} false array columns")
     
     # Convert lists to sets before performing set difference
     non_binary_columns = set(all_columns) - set(binary_columns)
@@ -688,8 +692,15 @@ def process_rows(source_table: str, destination_table: str) -> dict:
         # Step 1: Build SQL expressions for binary fields
         for col in binary_columns:
             select_parts.append(utils.render_convert_0_1_to_yes_no_cids_expression(col))
+
+        # Step 2: Build SQL expressions for false array fields
+        if false_array_columns:
+            utils.logger.info("Processing false array columns...")
+            for col in false_array_columns:
+                # Use the render_unwrap_singleton_expression function to create the SQL
+                select_parts.append(utils.render_unwrap_singleton_expression(col, "NULL"))
         
-        # Step 2: Build SQL expressions for non-binary fields
+        # Step 3: Build SQL expressions for non-binary fields
         for col in non_binary_columns:
             select_parts.append(f"`{col}`")
         
@@ -742,5 +753,5 @@ def process_rows(source_table: str, destination_table: str) -> dict:
 
 if __name__ == "__main__":
     source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
-    destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary"
+    destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary_and_false_arrays"
     process_rows(source_table=source_table, destination_table=destination_table)
