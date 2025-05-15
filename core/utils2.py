@@ -1,55 +1,3 @@
-    
-def get_binary_yes_no_fields(client, fq_table: str) -> tuple:
-    """
-    Identifies columns in a BigQuery table that contain only:
-        - '0' and '1'
-        - '0', '1', and NULL
-
-    Args:
-        client (bigquery.Client): An initialized BigQuery client.
-        fq_table (str): A fully qualified table name (e.g., "project.dataset.table").
-
-    Returns:
-        tuple: (Formatted SQL query string, list of column names that meet criteria).
-    """
-    
-    try:
-        # Get table schema
-        table = client.get_table(fq_table)
-
-        # Extract column names for STRING and INTEGER types
-        column_names = [field.name for field in table.schema if field.field_type in ("STRING", "INTEGER")]
-
-        if not column_names:
-            raise ValueError(f"No STRING or INTEGER columns found in `{fq_table}`.")
-
-        # Construct query using COUNTIF for efficiency
-        formatted_conditions = ",\n    ".join(
-            f"""
-            (COUNTIF({col} NOT IN ('0', '1') AND {col} IS NOT NULL) = 0) AS `{col}`
-            """.strip()
-            for col in column_names
-        )
-
-        # Format the query for better readability
-        query = f"""
-        SELECT 
-            {formatted_conditions}
-        FROM `{fq_table}`
-        """.strip()
-
-        # Execute the query
-        query_job = client.query(query)
-        result = query_job.result().to_dataframe()
-
-        # Extract columns that meet the criteria
-        binary_columns = [col for col in result.columns if result.iloc[0][col]]
-
-        return query, binary_columns
-
-    except Exception as e:
-        logger.error(f"Error getting binary fields: {e}")
-        return None, []
 
 def is_false_array(x: str) -> bool:
     """
@@ -91,30 +39,6 @@ def is_false_array(x: str) -> bool:
 
     return cond1 and cond2 and cond3
 
-def render_convert_0_1_to_yes_no_cids_expression(col_name:str) -> str:
-    """
-    Render a SQL expression to repace "0" and "1" values to concept IDs "353358909" and "104430631" for "Yes" and "No", respectively.
-    
-    Use Case: Many of the "select-all-that-apply" questions in our surveys are flattened into binary responses where each possible
-    selection is given a "Yes/No" response. However, during flattening, Yes/No responses are encoded as "0"/"1" instead of the desired 
-    concept ids of "353358909"/"104430631". 
-    
-    Parameters:
-        col_name (str): The column name to be processed.
-        
-    Returns:
-        str: A SQL snippet containing the CASE expression with an alias assignment.
-    """
-    
-    sql = \
-    rf"""CASE
-        WHEN {col_name} = "0" THEN "353358909" -- CID for Yes
-        WHEN {col_name} = "1" THEN "104430631" -- CID for No
-        WHEN {col_name} IS NULL THEN NULL      -- NULL
-    END AS {col_name}"""
-    
-    return sql
-    
 def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str:
     
     """

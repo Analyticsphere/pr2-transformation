@@ -46,6 +46,9 @@ EXCLUDED_NON_CID_SUBSTRINGS = list(
 # Allowable non-concept id substrings
 ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state']
 
+# Constants for fixing "false arrays"
+VALID_VALUES_FOR_FALSE_ARRAYS = [None, "[]", "[178420302]", "[958239616]"]
+
 # ------------------------------------------------------------------------------
 # Define one-off column renames that cannot be handled by generalized columns
 # ------------------------------------------------------------------------------
