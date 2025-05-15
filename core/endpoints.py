@@ -18,13 +18,13 @@ def heartbeat():
         'service': constants.SERVICE_NAME
     }), 200
 
-@app.route('/fix_loop_variables', methods=['POST'])
-def fix_loop_variables():
+@app.route('/clean_columns', methods=['POST'])
+def clean_columns():
     mapping: dict[str, any] = request.get_json() or {}
     source, destination = request_helpers.extract_source_and_destination(mapping)
     
     try:
-        utils.logger.info(f"fix_loop_variables endpoint called. Generating {destination} from {source}.")
+        utils.logger.info(f"clean_columns endpoint called. Generating {destination} from {source}.")
         status = transformations.process_columns(source, destination)  # Updated function call
         return jsonify({
             'status': status,
@@ -32,7 +32,24 @@ def fix_loop_variables():
             'service': constants.SERVICE_NAME
         }), 200
     except Exception as e:
-        utils.logger.exception("An error occurred in fix_loop_variables endpoint.")
+        utils.logger.exception("An error occurred in clean_columns endpoint.")
+        return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+    
+@app.route('/clean_rows', methods=['POST'])
+def clean_rows():
+    mapping: dict[str, any] = request.get_json() or {}
+    source, destination = request_helpers.extract_source_and_destination(mapping)
+    
+    try:
+        utils.logger.info(f"clean_rows endpoint called. Generating {destination} from {source}.")
+        status = transformations.process_rows(source, destination)  # Updated function call
+        return jsonify({
+            'status': status,
+            'timestamp': datetime.utcnow().isoformat(),
+            'service': constants.SERVICE_NAME
+        }), 200
+    except Exception as e:
+        utils.logger.exception("An error occurred in clean_rows endpoint.")
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
 
 @app.route('/merge_table_versions', methods=['POST'])

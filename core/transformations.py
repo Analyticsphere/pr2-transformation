@@ -1,11 +1,31 @@
 '''Module to compose SQL to execute data transformations.'''
 
 import re
+import os
+import sys
 from google.cloud import bigquery
 from google.cloud import storage
-import core.constants as constants
-import core.utils as utils
-import core.transform_renderer as transform_renderer
+# import core.constants as constants
+# import core.utils as utils
+# import core.transform_renderer as transform_renderer
+
+if __name__ == "__main__":
+    # Add parent directory to Python path when running as script
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Now these imports will work
+    import core.constants as constants
+    import core.utils as utils
+    import core.transform_renderer as transform_renderer
+else:
+    # When imported as module, use regular imports
+    import core.constants as constants
+    import core.utils as utils
+    import core.transform_renderer as transform_renderer
+
+########################################################################
+#############  Table-level Transformations #############################
+########################################################################
 
 def merge_table_versions(source_tables: list[str], destination_table: str) -> dict:
     """
@@ -161,6 +181,10 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
         "status": status,
         "submitted_sql_path": constants.OUTPUT_SQL_PATH
     }
+
+########################################################################
+#############  Column-level Transformations ############################
+########################################################################
 
 def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
@@ -497,7 +521,14 @@ def build_loop_variable_clauses(client: bigquery.Client, source_table: str, proc
         
         # Standardize case for the new variable name
         new_var_name = utils.standardize_column_case(new_var_name)
-        
+    
+        # If the column name has a version tag, e.g., _v2, ensure that it is at the end of the column name
+        has_version_tag = utils.extract_version_suffix(new_var_name) != ""
+        if has_version_tag:
+            new_var_nam_sans_version_tag = utils.excise_version_from_column_name(new_var_name)
+            version_tag = utils.extract_version_suffix(new_var_name)
+            new_var_name = new_var_nam_sans_version_tag + version_tag
+
         # Skip this variable if it would create a duplicate
         if new_var_name.lower() in processed_columns:
             utils.logger.info(f"Skipping output column {new_var_name} as it would create a duplicate")
@@ -626,3 +657,90 @@ def process_columns(source_table: str, destination_table: str) -> dict:
     except Exception as e:
         utils.logger.exception(f"Error in process_columns: {e}")
         raise e
+    
+########################################################################
+#############  Value or Row-level Transformations ######################
+########################################################################
+
+def process_rows(source_table: str, destination_table: str) -> dict:
+    """
+    Processes rows to ensure that values match what is expected from the data dictionary.
+    """
+    project, dataset, table = utils.parse_fq_table(source_table)
+    client = bigquery.Client(project=project)
+
+    utils.logger.info("Getting column names...")
+    all_columns = utils.get_column_names(client=client, fq_table=source_table)
+    utils.logger.info(f"Retrieved {len(all_columns)} total columns")
+    
+    utils.logger.info("Identifying binary columns...")
+    binary_columns = utils.get_binary_columns(client=client, fq_table=source_table)
+    utils.logger.info(f"Found {len(binary_columns)} binary columns")
+    
+    # Convert lists to sets before performing set difference
+    non_binary_columns = set(all_columns) - set(binary_columns)
+    utils.logger.info(f"Identified {len(non_binary_columns)} non-binary columns")
+
+    try:
+        utils.logger.info("Building SQL SELECT parts...")
+        select_parts = []
+        
+        # Step 1: Build SQL expressions for binary fields
+        for col in binary_columns:
+            select_parts.append(utils.render_convert_0_1_to_yes_no_cids_expression(col))
+        
+        # Step 2: Build SQL expressions for non-binary fields
+        for col in non_binary_columns:
+            select_parts.append(f"`{col}`")
+        
+        # Create the final SQL query
+        joined_select_parts = ",\n        ".join(select_parts)
+        sql = f"""
+        /* Combined transformation query for {source_table} -> {destination_table} */
+         
+        CREATE OR REPLACE TABLE `{destination_table}` AS
+        SELECT
+            {joined_select_parts}
+        FROM `{source_table}`
+        """
+        
+        # Save the SQL to GCS for audit purposes
+        try:
+            utils.logger.info("Saving SQL to GCS...")
+            gcs_client = storage.Client()
+            gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
+            utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
+            utils.logger.info(f"SQL saved to GCS at {gcs_path}")
+        except Exception as e:
+            utils.logger.exception(f"Error saving SQL to GCS: {e}")
+            raise e
+        
+        # Execute the SQL
+        try:
+            utils.logger.info("Executing SQL query...")
+            query_job = client.query(sql)
+            utils.logger.info(f"Query job created with ID: {query_job.job_id}")
+            query_job.result()  # Wait for the query to finish
+            utils.logger.info("Query execution completed successfully")
+            
+            status = f"Table {destination_table} successfully created with all transformations applied"
+            utils.logger.info(status)
+            return {
+                "status": status,
+                "submitted_sql_path": constants.OUTPUT_SQL_PATH
+            }
+        except Exception as e:
+            utils.logger.exception(f"Error executing SQL: {e}")
+            # Log more details about the exception
+            utils.logger.error(f"Exception type: {type(e).__name__}")
+            utils.logger.error(f"Exception args: {e.args}")
+            raise e
+
+    except Exception as e:
+        utils.logger.exception(f"Error in process_rows: {e}")
+        raise e
+
+if __name__ == "__main__":
+    source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
+    destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary"
+    process_rows(source_table=source_table, destination_table=destination_table)
