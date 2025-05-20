@@ -1,4 +1,4 @@
-'''Module for Flask enpoints that Apache Airflow tasks to call.'''
+'''Module for Flask REST API enpoints that Apache Airflow tasks to call.'''
 
 import os
 from datetime import datetime
@@ -25,7 +25,7 @@ def clean_columns():
     
     try:
         utils.logger.info(f"clean_columns endpoint called. Generating {destination} from {source}.")
-        status = transformations.process_columns(source, destination)  # Updated function call
+        status = transformations.process_columns(source, destination)  
         return jsonify({
             'status': status,
             'timestamp': datetime.utcnow().isoformat(),

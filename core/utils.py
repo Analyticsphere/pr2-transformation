@@ -9,6 +9,10 @@ from collections import defaultdict
 from google.cloud import bigquery, storage
 import pandas as pd #TODO Try to avoid using pandas
 
+if __name__ == "__main__":
+    # Add parent directory to Python path when running as script
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import core.utils as utils
 import core.constants as constants
 
@@ -459,36 +463,15 @@ def render_convert_0_1_to_yes_no_cids_expression(col_name: str) -> str:
     END AS {col_name}
     """.strip() 
 
-def format_false_array_condition(col: str, false_values: list[str]) -> str:
+def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch_size=100) -> list:
     """
-    Build a COUNTIF condition to ensure all values in a column are either NULL or in a list of false-like values.
-
-    Parameters:
-        col (str): The column name.
-        false_values (list): List of false-like string values.
-
-    Returns:
-        str: SQL expression for false array validation.
-    """
-    value_checks = [f'`{col}` = "{v}"' for v in false_values]
-    null_check = f'`{col}` IS NULL'
-    return f"""COUNTIF(
-        NOT (
-            {null_check}
-            OR {' OR '.join(value_checks)}
-        )
-    ) = 0"""
-
-def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch_size=500) -> list:
-    """
-    Optimized version of get_strict_false_array_columns that uses a UNION ALL approach
-    in batches to avoid hitting query length limits.
+    Optimized version of get_strict_false_array_columns that reduces table scans
+    while maintaining code readability.
     
-    This function performs all three conditions of false array detection:
+    This function performs all three conditions of false array detection in a single query per column:
     1. ≤ 3 distinct values
     2. Only contains specific values or NULL as specified in constants module
     3. ≤ 1 unique value matching the bracketed 9-digit pattern
-    **The function explicitly excludes the "Connect_ID" column from processing.
     
     Args:
         client (bigquery.Client): BigQuery client
@@ -502,19 +485,11 @@ def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch
         client = bigquery.Client()
 
     project_id, dataset_id, table_id = utils.parse_fq_table(fq_table)
-    utils.logger.info(f"Starting batched optimized strict false array detection for {fq_table}")
-
-    # Step 1: Get STRING columns
-    schema_query = f"""
-        SELECT column_name
-        FROM `{project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
-        WHERE table_name = '{table_id}' AND data_type = 'STRING'
-    """
+    utils.logger.info(f"Starting optimized strict false array detection for {fq_table}")
 
     try:
-        columns = [row.column_name for row in client.query(schema_query).result()]
-        utils.logger.info(f"Found {len(columns)} STRING columns")
-
+        # Get all column names
+        columns = utils.get_column_names(client=client, fq_table=fq_table)
         if not columns:
             return []
         
@@ -529,62 +504,67 @@ def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch
             batch = columns[i:i+batch_size]
             utils.logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} columns")
             
-            # Build the UNION ALL query for this batch
-            subqueries = []
+            # Build a more readable version of the false array values condition
+            false_values_list = ", ".join([f"'{val}'" for val in constants.FALSE_ARRAY_VALUES])
+            
+            # Create a single query per column that performs all checks at once
+            column_checks = []
             for col in batch:
-                # Condition 1: ≤ 3 unique values
-                unique_value_check = f"""
-                    SELECT 
-                        '{col}' AS column_name,
-                        'unique_count' AS check_type,
-                        ARRAY_LENGTH(ARRAY(SELECT DISTINCT `{col}` FROM `{fq_table}`)) <= 3 AS passes_check
+                # Create a clear, well-structured check for this column
+                column_check = f"""
+                SELECT
+                '{col}' AS column_name,
+                -- Check 1: Column has ≤3 distinct values AND at least one non-null value
+                ((SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}`) <= 3 
+                AND 
+                (SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}` WHERE `{col}` IS NOT NULL) > 0) AS has_few_non_null_values,
+                -- Check 2: Column only contains NULL or values from our false array list
+                (SELECT COUNTIF(
+                `{col}` IS NOT NULL
+                AND `{col}` NOT IN ({false_values_list})
+                ) FROM `{fq_table}`) = 0 AS only_has_false_array_values,
+                -- Check 3: Column has at most 1 value matching our bracketed pattern
+                (SELECT COUNT(DISTINCT `{col}`)
+                FROM `{fq_table}`
+                WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
+                ) <= 1 AS has_single_concept_id
+                FROM
+                -- This is just a dummy FROM clause that returns exactly one row
+                (SELECT 1) AS dummy
                 """
-                
-                # Condition 2: only false or NULL values
-                false_check = f"""
-                    SELECT 
-                        '{col}' AS column_name,
-                        'false_values' AS check_type,
-                        {format_false_array_condition(col, constants.FALSE_ARRAY_VALUES)} AS passes_check
-                """
-                
-                # Condition 3: ≤ 1 bracketed 9-digit concept ID
-                regex_check = f"""
-                    SELECT 
-                        '{col}' AS column_name,
-                        'regex_pattern' AS check_type,
-                        ARRAY_LENGTH(
-                            ARRAY(
-                                SELECT DISTINCT `{col}`
-                                FROM `{fq_table}`
-                                WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
-                            )
-                        ) <= 1 AS passes_check
-                """
-                
-                # Add all three checks for this column
-                subqueries.extend([unique_value_check, false_check, regex_check])
+                column_checks.append(column_check)
             
-            # Combine all subqueries for this batch with UNION ALL
-            combined_query = " UNION ALL ".join(subqueries)
+            # Combine all column checks with UNION ALL
+            combined_query = "\nUNION ALL\n".join(column_checks)
             
-            utils.logger.info(f"Executing combined query to check batch with {len(subqueries)} individual checks")
+            # Add an outer query that filters for columns passing all checks
+            final_query = f"""
+            SELECT column_name
+            FROM ({combined_query})
+            WHERE 
+                has_few_non_null_values = TRUE
+                AND only_has_false_array_values = TRUE
+                AND has_single_concept_id = TRUE
+            """
             
-            # Execute the combined query
-            results_df = client.query(combined_query).to_dataframe()
+            utils.logger.info(f"Executing combined query to check {len(batch)} columns")
             
-            # Pivot the results to see which columns pass all three checks
-            # Group by column_name and check if all checks pass
-            if not results_df.empty:
-                aggregated_results = results_df.groupby('column_name')['passes_check'].all()
+            try:
+                # Write out the query for debugging if needed
+                with open('combined_query.sql', 'w') as file:
+                    file.write(final_query)
                 
-                # Get columns that pass all checks
-                batch_strict_false_columns = aggregated_results[aggregated_results].index.tolist()
-                strict_false_columns.extend(batch_strict_false_columns)
+                # Execute the query and collect results
+                query_job = client.query(final_query)
+                batch_results = [row.column_name for row in query_job.result()]
                 
-                utils.logger.info(f"Found {len(batch_strict_false_columns)} strict false array columns in this batch")
-            else:
-                utils.logger.warning(f"Empty results for batch {i//batch_size + 1}")
+                strict_false_columns.extend(batch_results)
+                utils.logger.info(f"Found {len(batch_results)} strict false array columns in this batch")
+            except Exception as e:
+                utils.logger.error(f"Error executing batch query: {str(e)}")
+                utils.logger.error(f"Exception type: {type(e).__name__}")
+                utils.logger.error(f"Exception args: {e.args}")
+                # Continue with next batch instead of failing completely
         
         utils.logger.info(f"Total strict false array columns detected: {len(strict_false_columns)}")
         return strict_false_columns
@@ -595,6 +575,42 @@ def get_strict_false_array_columns(client: bigquery.Client, fq_table: str, batch
         utils.logger.error(f"Exception args: {e.args}")
         return []
     
+def get_false_array_columns_for_tables(tables: list[str], batch_size=50) -> dict:
+    """
+    Generate a dictionary with table names and their false array columns.
+    
+    Args:
+        tables (list[str]): List of fully qualified table names
+        batch_size (int): Number of columns to process in each batch
+        
+    Returns:
+        dict: Dictionary with table names as keys and lists of false array columns as values
+    """
+    client = bigquery.Client()
+    result = {}
+    
+    for table in tables:
+        utils.logger.info(f"Processing table: {table}")
+        try:
+            false_array_columns = get_strict_false_array_columns(
+                client=client, 
+                fq_table=table, 
+                batch_size=batch_size
+            )
+            
+            # Store the result in the dictionary
+            result[table] = false_array_columns
+            
+            # Log the results
+            utils.logger.info(f"Found {len(false_array_columns)} false array columns in {table}")
+            if false_array_columns:
+                utils.logger.info(f"False array columns: {', '.join(false_array_columns)}")
+        except Exception as e:
+            utils.logger.error(f"Error processing table {table}: {str(e)}")
+            result[table] = []  # Empty list for failed tables
+    
+    return result
+   
 def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str:
     """
     Render a SQL expression to handle survey unwrapping singleton values from variables stored as "false arrays".
@@ -624,3 +640,40 @@ def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str
         END AS {col_name}"""
         
     return sql
+
+if __name__ == '__main__':
+
+
+    # List of tables to process
+
+    tables_to_process = [
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns",
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v2_with_cleaned_columns",
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module2_v1_with_cleaned_columns",
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module2_v2_with_cleaned_columns",
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module3_with_cleaned_columns",
+        "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module4_with_cleaned_columns",
+        # Add more tables as needed
+    ]
+    
+    # Process all tables and get results
+    results = get_false_array_columns_for_tables(tables_to_process, batch_size=50)
+    
+    # Print the results in a readable format
+    print("\nSummary of False Array Columns by Table:")
+    print("=======================================")
+    for table, columns in results.items():
+        table_short_name = table.split('.')[-1]  # Get the last part of the table name for cleaner output
+        print(f"\n{table_short_name}:")
+        if columns:
+            for col in columns:
+                print(f"  - {col}")
+        else:
+            print("  No false array columns found")
+    
+    # You could also save the results to a file
+    import json
+    with open('false_array_columns.json', 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print("\nResults have been saved to false_array_columns.json")

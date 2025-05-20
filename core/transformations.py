@@ -5,23 +5,12 @@ import os
 import sys
 from google.cloud import bigquery
 from google.cloud import storage
-# import core.constants as constants
-# import core.utils as utils
-# import core.transform_renderer as transform_renderer
 
 if __name__ == "__main__":
     # Add parent directory to Python path when running as script
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
-    # Now these imports will work
-    import core.constants as constants
-    import core.utils as utils
-    import core.transform_renderer as transform_renderer
-else:
-    # When imported as module, use regular imports
-    import core.constants as constants
-    import core.utils as utils
-    import core.transform_renderer as transform_renderer
+
+from core import constants, utils, transform_renderer
 
 ########################################################################
 #############  Table-level Transformations #############################
@@ -699,13 +688,16 @@ def process_rows(source_table: str, destination_table: str) -> dict:
             for col in false_array_columns:
                 # Use the render_unwrap_singleton_expression function to create the SQL
                 select_parts.append(utils.render_unwrap_singleton_expression(col, "NULL"))
-        
+
         # Step 3: Build SQL expressions for non-binary fields
         for col in non_binary_columns:
             select_parts.append(f"`{col}`")
         
-        # Create the final SQL query
+        # FIRST create joined_select_parts, THEN log it
         joined_select_parts = ",\n        ".join(select_parts)
+        utils.logger.info(f"Generated {len(select_parts)} SQL SELECT parts")
+        
+        # Create the final SQL query
         sql = f"""
         /* Combined transformation query for {source_table} -> {destination_table} */
          
