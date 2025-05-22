@@ -667,7 +667,12 @@ def process_rows(source_table: str, destination_table: str) -> dict:
     utils.logger.info(f"Found {len(binary_columns)} binary columns")
 
     utils.logger.info("Identifying false array columns...")
-    false_array_columns = utils.get_strict_false_array_columns(client=client, fq_table=source_table)
+    false_array_columns = utils.get_strict_false_array_columns(
+        client, 
+        fq_table=source_table, batch_size=100, 
+        use_reference=True,           
+        reference_file_path='reference/false_array_columns.json'      
+    )
     utils.logger.info(f"Found {len(false_array_columns)} false array columns")
     
     # Convert to sets for efficient operations and ensure no overlap
