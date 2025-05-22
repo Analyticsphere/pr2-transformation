@@ -667,43 +667,71 @@ def process_rows(source_table: str, destination_table: str) -> dict:
     utils.logger.info(f"Found {len(binary_columns)} binary columns")
 
     utils.logger.info("Identifying false array columns...")
-    false_array_columns = utils.get_strict_false_array_columns(
-        client=client, 
-        fq_table=source_table,
-        use_reference=True, 
-        reference_file_path=constants.FALSE_ARRAY_COLUMN_CONFIG
-        )
-
+    false_array_columns = utils.get_strict_false_array_columns(client=client, fq_table=source_table)
     utils.logger.info(f"Found {len(false_array_columns)} false array columns")
     
-    # Convert lists to sets before performing set difference
-    non_binary_columns = set(all_columns) - set(binary_columns)
-    utils.logger.info(f"Identified {len(non_binary_columns)} non-binary columns")
+    # Convert to sets for efficient operations and ensure no overlap
+    all_columns_set = set(all_columns)
+    binary_columns_set = set(binary_columns)
+    false_array_columns_set = set(false_array_columns)
+    
+    # Calculate non-binary, non-false-array columns
+    processed_columns = binary_columns_set | false_array_columns_set
+    non_processed_columns = all_columns_set - processed_columns
+    
+    utils.logger.info(f"Binary columns: {len(binary_columns_set)}")
+    utils.logger.info(f"False array columns: {len(false_array_columns_set)}")
+    utils.logger.info(f"Other columns: {len(non_processed_columns)}")
+    
+    # Check for any overlap (shouldn't happen, but good to verify)
+    overlap = binary_columns_set & false_array_columns_set
+    if overlap:
+        utils.logger.warning(f"Found {len(overlap)} columns that are both binary and false array: {overlap}")
 
     try:
         utils.logger.info("Building SQL SELECT parts...")
         select_parts = []
         
         # Step 1: Build SQL expressions for binary fields
-        for col in binary_columns:
+        for col in sorted(binary_columns_set):  # Sort for consistent ordering
             select_parts.append(utils.render_convert_0_1_to_yes_no_cids_expression(col))
 
         # Step 2: Build SQL expressions for false array fields
-        if false_array_columns:
+        if false_array_columns_set:
             utils.logger.info("Processing false array columns...")
-            for col in false_array_columns:
+            for col in sorted(false_array_columns_set):  # Sort for consistent ordering
                 # Use the render_unwrap_singleton_expression function to create the SQL
                 select_parts.append(utils.render_unwrap_singleton_expression(col, "NULL"))
 
-        # Step 3: Build SQL expressions for non-binary fields
-        for col in non_binary_columns:
+        # Step 3: Build SQL expressions for remaining fields (non-binary, non-false-array)
+        for col in sorted(non_processed_columns):  # Sort for consistent ordering
             select_parts.append(f"`{col}`")
         
-        # FIRST create joined_select_parts, THEN log it
-        joined_select_parts = ",\n        ".join(select_parts)
-        utils.logger.info(f"Generated {len(select_parts)} SQL SELECT parts")
+        # Log the counts for verification
+        utils.logger.info(f"Generated {len(select_parts)} SQL SELECT parts:")
+        utils.logger.info(f"  - Binary transformations: {len(binary_columns_set)}")
+        utils.logger.info(f"  - False array transformations: {len(false_array_columns_set)}")
+        utils.logger.info(f"  - Pass-through columns: {len(non_processed_columns)}")
+        
+        # Verify no duplicates in select_parts
+        column_names_in_select = []
+        for part in select_parts:
+            # Extract column name from "... AS column_name" or just "column_name"
+            if " AS " in part:
+                col_name = part.split(" AS ")[-1].strip()
+            else:
+                col_name = part.strip().strip('`')
+            column_names_in_select.append(col_name)
+        
+        # Check for duplicates
+        duplicates = [col for col in set(column_names_in_select) if column_names_in_select.count(col) > 1]
+        if duplicates:
+            utils.logger.error(f"Found duplicate column names in SELECT: {duplicates}")
+            raise ValueError(f"Duplicate column names detected: {duplicates}")
         
         # Create the final SQL query
+        joined_select_parts = ",\n        ".join(select_parts)
+        
         sql = f"""
         /* Combined transformation query for {source_table} -> {destination_table} */
          

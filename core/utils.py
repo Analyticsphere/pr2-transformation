@@ -641,21 +641,26 @@ def get_strict_false_array_columns(
                     # Create a clear, well-structured check for this column
                     column_check = f"""
                     SELECT
+
                     '{col}' AS column_name,
+
                     -- Check 1: Column has ≤3 distinct values AND at least one non-null value
                     ((SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}`) <= 3 
                     AND 
                     (SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}` WHERE `{col}` IS NOT NULL) > 0) AS has_few_non_null_values,
+
                     -- Check 2: Column only contains NULL or values from our false array list
                     (SELECT COUNTIF(
                     `{col}` IS NOT NULL
                     AND `{col}` NOT IN ({false_values_list})
                     ) FROM `{fq_table}`) = 0 AS only_has_false_array_values,
+
                     -- Check 3: Column has at most 1 value matching our bracketed pattern
                     (SELECT COUNT(DISTINCT `{col}`)
                     FROM `{fq_table}`
                     WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
                     ) <= 1 AS has_single_concept_id
+                    
                     FROM
                     -- This is just a dummy FROM clause that returns exactly one row
                     (SELECT 1) AS dummy
