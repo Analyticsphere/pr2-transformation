@@ -42,20 +42,28 @@ SUBSTRINGS_MISSNAMED = [
 
 # Combine all substring lists, removing duplicates
 EXCLUDED_NON_CID_SUBSTRINGS = list(
-    SUBSTRINGS_DATATYPE_CONFLICT +
-    SUBSTRINGS_MISSNAMED
+    SUBSTRINGS_DATATYPE_CONFLICT 
+    + SUBSTRINGS_MISSNAMED
 )
 
 # -----------------------------------
 # Define false array parameters
 # -----------------------------------
-# Used for 
+# Columns which only ever have these values within brackets are "false arrays". 
+# In our questionaire's they are stored as arrays, but they are flattened to 
+# strings downstream with a single bracketed value. 
 FALSE_ARRAY_VALUES = [
     "[]",
     "[178420302]",
     "[958239616]",
 ]
 
+# The list above was produced the scripts/identify_false_array_columns.py. It holds
+# a JSON file listing all of the "false array columns that were found". Loop variables
+# are labeled with a 
+FALSE_ARRAY_COLUMN_CONFIG = "reference/false_array_columns.json"
+
+# A regex pattern for identifying 9-digit concept ids within strings
 BRACKETED_NINE_DIGIT_PATTERN = r'^\[\d{9}\]$'
 
 # ------------------------------------------------------------------------------

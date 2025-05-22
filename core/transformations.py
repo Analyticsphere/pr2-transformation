@@ -6,8 +6,8 @@ import sys
 from google.cloud import bigquery
 from google.cloud import storage
 
+# Add parent directory to Python path when running as script
 if __name__ == "__main__":
-    # Add parent directory to Python path when running as script
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import constants, utils, transform_renderer
@@ -175,7 +175,7 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
 #############  Column-level Transformations ############################
 ########################################################################
 
-def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for one-off column renames from constants.
     
@@ -279,7 +279,7 @@ def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, pr
     
     return select_clauses, processed_columns
 
-def build_substring_removal_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_substring_removal_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for removing substrings defined in constants.SUBSTRINGS_TO_FIX.
     
@@ -366,7 +366,7 @@ def build_substring_removal_clauses(client: bigquery.Client, source_table: str, 
     
     return select_clauses, processed_columns
 
-def build_custom_transform_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_custom_transform_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for custom column transformations defined in constants.CUSTOM_TRANSFORMS.
     
@@ -430,7 +430,7 @@ def build_custom_transform_clauses(client: bigquery.Client, source_table: str, p
     
     return select_clauses, processed_columns
 
-def build_loop_variable_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_loop_variable_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for loop variable processing.
     
@@ -485,7 +485,7 @@ def build_loop_variable_clauses(client: bigquery.Client, source_table: str, proc
         raw_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         new_var_name = utils.excise_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
         
-        # Standardize case for the new variable name
+        # Standardize case for the new variable name (e.g., make lowercase)
         new_var_name = utils.standardize_column_case(new_var_name)
         
         # Skip this variable if it would create a duplicate
@@ -564,22 +564,22 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         
         # Step 1: Build clauses for one-off column renames
         utils.logger.info("Step 1: Building one-off column rename clauses")
-        one_off_clauses, processed_columns = build_one_off_renames_clauses(
+        one_off_clauses, processed_columns = _build_one_off_renames_clauses(
             client, source_table, processed_columns)
         
         # Step 2: Build clauses for substring removal
         utils.logger.info(f"Step 2: Building clauses for removing substrings from {constants.SUBSTRINGS_TO_FIX}")
-        substring_clauses, processed_columns = build_substring_removal_clauses(
+        substring_clauses, processed_columns = _build_substring_removal_clauses(
             client, source_table, processed_columns)
         
         # Step 3: Build clauses for custom column transformations
         utils.logger.info("Step 3: Building custom transformation clauses")
-        custom_transform_clauses, processed_columns = build_custom_transform_clauses(
+        custom_transform_clauses, processed_columns = _build_custom_transform_clauses(
             client, source_table, processed_columns)
         
         # Step 4: Build clauses for loop variable processing
         utils.logger.info("Step 3: Building loop variable processing clauses")
-        loop_clauses, processed_columns = build_loop_variable_clauses(
+        loop_clauses, processed_columns = _build_loop_variable_clauses(
             client, source_table, processed_columns)
         
         # Combine all clauses with appropriate comments
@@ -667,7 +667,13 @@ def process_rows(source_table: str, destination_table: str) -> dict:
     utils.logger.info(f"Found {len(binary_columns)} binary columns")
 
     utils.logger.info("Identifying false array columns...")
-    false_array_columns = utils.get_strict_false_array_columns(client=client, fq_table=source_table)
+    false_array_columns = utils.get_strict_false_array_columns(
+        client=client, 
+        fq_table=source_table,
+        use_reference=True, 
+        reference_file_path=constants.FALSE_ARRAY_COLUMN_CONFIG
+        )
+
     utils.logger.info(f"Found {len(false_array_columns)} false array columns")
     
     # Convert lists to sets before performing set difference
