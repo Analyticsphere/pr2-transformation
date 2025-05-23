@@ -587,7 +587,9 @@ def get_strict_false_array_columns(
     reference_file_path: Optional[str] = None
 ) -> list:
     """
-    Enhanced version of get_strict_false_array_columns with option to use reference file.
+    Get false array columns from a given table by either using the reference file or 
+    using a detection algorithm. Using the reference file is faster, but the reference 
+    file might become out of date. 
     
     Args:
         client (bigquery.Client): BigQuery client
