@@ -498,12 +498,6 @@ def load_false_array_reference(reference_file_path: Optional[str] = None) -> dic
         utils.logger.info(f"Loaded {len(concept_pairs)} concept ID pairs from reference file")
         return concept_pairs
         
-    except FileNotFoundError:
-        utils.logger.error(f"Reference file not found: {reference_file_path}")
-        return []
-    except json.JSONDecodeError as e:
-        utils.logger.error(f"Error parsing JSON from {reference_file_path}: {e}")
-        return []
     except Exception as e:
         utils.logger.error(f"Error loading reference file {reference_file_path}: {e}")
         return []
@@ -692,8 +686,6 @@ def get_strict_false_array_columns(
                     utils.logger.info(f"Found {len(batch_results)} strict false array columns in this batch")
                 except Exception as e:
                     utils.logger.error(f"Error executing batch query: {str(e)}")
-                    utils.logger.error(f"Exception type: {type(e).__name__}")
-                    utils.logger.error(f"Exception args: {e.args}")
                     # Continue with next batch instead of failing completely
             
             utils.logger.info(f"Total strict false array columns detected: {len(strict_false_columns)}")
@@ -701,8 +693,6 @@ def get_strict_false_array_columns(
 
         except Exception as e:
             utils.logger.error(f"Error in optimized strict false array detection: {str(e)}")
-            utils.logger.error(f"Exception type: {type(e).__name__}")
-            utils.logger.error(f"Exception args: {e.args}")
             return []
 
 def get_false_array_columns_for_tables(
