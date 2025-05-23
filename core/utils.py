@@ -3,11 +3,17 @@
 import os
 import re
 import sys
+import json
 import logging
 from collections import defaultdict
+from typing import Optional
 
 from google.cloud import bigquery, storage
 import pandas as pd #TODO Try to avoid using pandas
+
+if __name__ == "__main__":
+    # Add parent directory to Python path when running as script
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import core.utils as utils
 import core.constants as constants
@@ -458,3 +464,315 @@ def render_convert_0_1_to_yes_no_cids_expression(col_name: str) -> str:
         ELSE NULL
     END AS {col_name}
     """.strip() 
+
+def load_false_array_reference(reference_file_path: Optional[str] = None) -> dict:
+    """
+    Load the false array reference file containing concept ID pairs.
+    
+    Args:
+        reference_file_path (str, optional): Path to the reference JSON file.
+                                           If None, uses constants.FALSE_ARRAY_COLUMN_CONFIG
+    
+    Returns:
+        dict: Dictionary containing metadata and concept_id_pairs
+    """
+    if reference_file_path is None:
+        reference_file_path = constants.FALSE_ARRAY_COLUMN_CONFIG
+    
+    try:
+        with open(reference_file_path, 'r') as f:
+            data = json.load(f)
+        
+        utils.logger.info(f"Loaded false array reference from {reference_file_path}")
+        
+        # Handle both old format (direct list) and new format (with metadata)
+        if isinstance(data, list):
+            # Old format - direct list of concept ID pairs
+            concept_pairs = data
+        elif isinstance(data, dict) and "concept_id_pairs" in data:
+            # New format - with metadata wrapper
+            concept_pairs = data["concept_id_pairs"]
+        else:
+            raise ValueError("Invalid reference file format")
+        
+        utils.logger.info(f"Loaded {len(concept_pairs)} concept ID pairs from reference file")
+        return concept_pairs
+        
+    except Exception as e:
+        utils.logger.error(f"Error loading reference file {reference_file_path}: {e}")
+        return []
+
+def get_false_array_columns_from_reference(
+    client: bigquery.Client, 
+    fq_table: str, 
+    reference_file_path: Optional[str] = None
+) -> list:
+    """
+    Identify false array columns by checking if they contain concept ID pairs from the reference file.
+    
+    This function looks for:
+    1. Exact matches: columns that match the reference pairs exactly (e.g., "d_578895128_d_578895128")
+    2. Loop variables: columns that contain the reference pairs as prefixes (e.g., "d_578895128_d_578895128_19")
+    
+    Args:
+        client (bigquery.Client): BigQuery client
+        fq_table (str): Fully qualified table name
+        reference_file_path (str, optional): Path to reference JSON file
+        
+    Returns:
+        list: Column names that contain complete concept ID pairs from the reference file
+    """
+    if client is None:
+        client = bigquery.Client()
+    
+    utils.logger.info(f"Starting reference-based false array detection for {fq_table}")
+    
+    # Load the reference concept ID pairs
+    concept_pairs = load_false_array_reference(reference_file_path)
+    if not concept_pairs:
+        utils.logger.warning("No concept ID pairs loaded from reference file")
+        return []
+    
+    # Create patterns to match from the reference pairs
+    reference_patterns = []
+    for pair in concept_pairs:
+        if isinstance(pair, list) and len(pair) >= 2:
+            # Create pattern for exact match and loop variable match
+            # e.g., for ["578895128", "578895128"] create "d_578895128_d_578895128"
+            pattern = f"d_{pair[0]}_d_{pair[1]}"
+            reference_patterns.append(pattern)
+    
+    utils.logger.info(f"Created {len(reference_patterns)} patterns from reference pairs")
+    
+    try:
+        # Get all column names from the table
+        columns = utils.get_column_names(client=client, fq_table=fq_table)
+        
+        # Exclude Connect_ID from processing
+        columns = [col for col in columns if col != "Connect_ID"]
+        utils.logger.info(f"Processing {len(columns)} columns after excluding Connect_ID")
+        
+        # Find columns that match the reference patterns
+        matching_columns = []
+        
+        for col in columns:
+            # Check if this column matches any reference pattern
+            for pattern in reference_patterns:
+                # Check for exact match (e.g., "d_578895128_d_578895128")
+                if col == pattern:
+                    matching_columns.append(col)
+                    utils.logger.debug(f"Column {col} exactly matches pattern {pattern}")
+                    break
+                # Check for loop variable match (e.g., "d_578895128_d_578895128_19")
+                elif col.startswith(pattern + "_") and col.count("_") > pattern.count("_"):
+                    # Additional check: ensure it's actually a loop variable (ends with digits)
+                    suffix = col[len(pattern + "_"):]
+                    if suffix.replace("_", "").isdigit():  # handles cases like "19" or "1_1"
+                        matching_columns.append(col)
+                        utils.logger.debug(f"Column {col} matches loop pattern {pattern}")
+                        break
+        
+        utils.logger.info(f"Found {len(matching_columns)} columns matching reference patterns")
+        return matching_columns
+        
+    except Exception as e:
+        utils.logger.error(f"Error in reference-based false array detection: {str(e)}")
+        return []
+
+def get_strict_false_array_columns(
+    client: bigquery.Client, 
+    fq_table: str, 
+    batch_size: int = 100,
+    use_reference: bool = False,
+    reference_file_path: Optional[str] = None
+) -> list:
+    """
+    Get false array columns from a given table by either using the reference file or 
+    using a detection algorithm. Using the reference file is faster, but the reference 
+    file might become out of date. 
+    
+    Args:
+        client (bigquery.Client): BigQuery client
+        fq_table (str): Fully qualified table name
+        batch_size (int): Number of columns to process in each batch (ignored if use_reference=True)
+        use_reference (bool): If True, use reference file instead of computational logic
+        reference_file_path (str, optional): Path to reference JSON file
+        
+    Returns:
+        list: Column names that satisfy false array conditions
+    """
+    if use_reference:
+        utils.logger.info("Using reference file for false array detection")
+        return get_false_array_columns_from_reference(
+            client=client, 
+            fq_table=fq_table, 
+            reference_file_path=reference_file_path
+        )
+    else:
+        utils.logger.info("Using computational logic for false array detection")
+        # Original computational logic (existing code remains unchanged)
+        if client is None:
+            client = bigquery.Client()
+
+        project_id, dataset_id, table_id = utils.parse_fq_table(fq_table)
+        utils.logger.info(f"Starting optimized strict false array detection for {fq_table}")
+
+        try:
+            # Get all column names
+            columns = utils.get_column_names(client=client, fq_table=fq_table)
+            if not columns:
+                return []
+            
+            # Explicitly exclude "Connect_ID" from processing
+            columns = [col for col in columns if col != "Connect_ID"]
+            utils.logger.info(f"Processing {len(columns)} columns after excluding Connect_ID")
+            
+            strict_false_columns = []
+            
+            # Process columns in batches to avoid excessive query size
+            for i in range(0, len(columns), batch_size):
+                batch = columns[i:i+batch_size]
+                utils.logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} columns")
+                
+                # Build a more readable version of the false array values condition
+                false_values_list = ", ".join([f"'{val}'" for val in constants.FALSE_ARRAY_VALUES])
+                
+                # Create a single query per column that performs all checks at once
+                column_checks = []
+                for col in batch:
+                    # Create a clear, well-structured check for this column
+                    column_check = f"""
+                    SELECT
+                    '{col}' AS column_name,
+                    -- Check 1: Column has ≤3 distinct values AND at least one non-null value
+                    ((SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}`) <= 3 
+                    AND 
+                    (SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}` WHERE `{col}` IS NOT NULL) > 0) AS has_few_non_null_values,
+                    -- Check 2: Column only contains NULL or values from our false array list
+                    (SELECT COUNTIF(
+                    `{col}` IS NOT NULL
+                    AND `{col}` NOT IN ({false_values_list})
+                    ) FROM `{fq_table}`) = 0 AS only_has_false_array_values,
+                    -- Check 3: Column has at most 1 value matching our bracketed pattern
+                    (SELECT COUNT(DISTINCT `{col}`)
+                    FROM `{fq_table}`
+                    WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
+                    ) <= 1 AS has_single_concept_id
+                    FROM
+                    -- This is just a dummy FROM clause that returns exactly one row
+                    (SELECT 1) AS dummy
+                    """
+                    column_checks.append(column_check)
+                
+                # Combine all column checks with UNION ALL
+                combined_query = "\nUNION ALL\n".join(column_checks)
+                
+                # Add an outer query that filters for columns passing all checks
+                final_query = f"""
+                SELECT column_name
+                FROM ({combined_query})
+                WHERE 
+                    has_few_non_null_values = TRUE
+                    AND only_has_false_array_values = TRUE
+                    AND has_single_concept_id = TRUE
+                """
+                
+                utils.logger.info(f"Executing combined query to check {len(batch)} columns")
+                
+                try:
+                    # Execute the query and collect results
+                    query_job = client.query(final_query)
+                    batch_results = [row.column_name for row in query_job.result()]
+                    
+                    strict_false_columns.extend(batch_results)
+                    utils.logger.info(f"Found {len(batch_results)} strict false array columns in this batch")
+                except Exception as e:
+                    utils.logger.error(f"Error executing batch query: {str(e)}")
+                    # Continue with next batch instead of failing completely
+            
+            utils.logger.info(f"Total strict false array columns detected: {len(strict_false_columns)}")
+            return strict_false_columns
+
+        except Exception as e:
+            utils.logger.error(f"Error in optimized strict false array detection: {str(e)}")
+            return []
+
+def get_false_array_columns_for_tables(
+    tables: list[str], 
+    batch_size: int = 50, 
+    use_reference: bool = False,
+    reference_file_path: Optional[str] = None
+) -> dict:
+    """
+    Enhanced version with option to use reference file for false array detection.
+    
+    Args:
+        tables (list[str]): List of fully qualified table names
+        batch_size (int): Number of columns to process in each batch (ignored if use_reference=True)
+        use_reference (bool): If True, use reference file instead of computational logic
+        reference_file_path (str, optional): Path to reference JSON file
+        
+    Returns:
+        dict: Dictionary with table names as keys and lists of false array columns as values
+    """
+    client = bigquery.Client()
+    result = {}
+    
+    if use_reference:
+        utils.logger.info("Using reference file for false array detection across all tables")
+    else:
+        utils.logger.info("Using computational logic for false array detection across all tables")
+    
+    for table in tables:
+        utils.logger.info(f"Processing table: {table}")
+        try:
+            false_array_columns = get_strict_false_array_columns(
+                client=client, 
+                fq_table=table, 
+                batch_size=batch_size,
+                use_reference=use_reference,
+                reference_file_path=reference_file_path
+            )
+            
+            # Store the result in the dictionary
+            result[table] = false_array_columns
+            
+            # Log the results
+            utils.logger.info(f"Found {len(false_array_columns)} false array columns in {table}")
+            if false_array_columns:
+                utils.logger.info(f"False array columns: {', '.join(false_array_columns)}")
+        except Exception as e:
+            utils.logger.error(f"Error processing table {table}: {str(e)}")
+            result[table] = []  # Empty list for failed tables
+    
+    return result
+
+def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str:
+    """
+    Render a SQL expression to handle survey unwrapping singleton values from variables stored as "false arrays".
+
+    This function returns a SQL snippet that:
+      - Returns NULL when the column's value equals "[]"
+      - Returns the unbracketed nine-digit concept_id when the value is in the form "[123456789]"
+      - Returns the provided default value (cast as a string) when the value does not match the nine-digit pattern
+      - Assigns an alias to the expression using the provided column name
+
+    Parameters:
+        col_name (str): The column name to be processed.
+        default_value (str): The default SQL literal to return when the pattern is not matched.
+                             (For example, a numeric default as 0, or a string default as "'ERROR!'").
+                             The default value will be cast to STRING.
+
+    Returns:
+        str: A SQL snippet containing the CASE expression with an alias assignment.
+    """
+    
+    sql = \
+        rf"""CASE
+            WHEN {col_name} = "[]" THEN NULL
+            WHEN REGEXP_CONTAINS({col_name}, r'\[\d{{9}}\]') THEN REGEXP_REPLACE({col_name}, r'\[(\d{{9}})\]', r'\1') -- remove brackets around CID
+            WHEN {col_name} IS NULL THEN NULL
+            ELSE CAST({default_value} AS STRING)
+        END AS {col_name}"""
+        
+    return sql

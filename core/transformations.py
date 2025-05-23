@@ -5,23 +5,12 @@ import os
 import sys
 from google.cloud import bigquery
 from google.cloud import storage
-# import core.constants as constants
-# import core.utils as utils
-# import core.transform_renderer as transform_renderer
 
+# Add parent directory to Python path when running as script
 if __name__ == "__main__":
-    # Add parent directory to Python path when running as script
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
-    # Now these imports will work
-    import core.constants as constants
-    import core.utils as utils
-    import core.transform_renderer as transform_renderer
-else:
-    # When imported as module, use regular imports
-    import core.constants as constants
-    import core.utils as utils
-    import core.transform_renderer as transform_renderer
+
+from core import constants, utils, transform_renderer
 
 ########################################################################
 #############  Table-level Transformations #############################
@@ -186,7 +175,7 @@ def merge_table_versions(source_tables: list[str], destination_table: str) -> di
 #############  Column-level Transformations ############################
 ########################################################################
 
-def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_one_off_renames_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for one-off column renames from constants.
     
@@ -290,7 +279,7 @@ def build_one_off_renames_clauses(client: bigquery.Client, source_table: str, pr
     
     return select_clauses, processed_columns
 
-def build_substring_removal_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_substring_removal_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for removing substrings defined in constants.SUBSTRINGS_TO_FIX.
     
@@ -377,7 +366,7 @@ def build_substring_removal_clauses(client: bigquery.Client, source_table: str, 
     
     return select_clauses, processed_columns
 
-def build_custom_transform_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_custom_transform_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for custom column transformations defined in constants.CUSTOM_TRANSFORMS.
     
@@ -441,7 +430,7 @@ def build_custom_transform_clauses(client: bigquery.Client, source_table: str, p
     
     return select_clauses, processed_columns
 
-def build_loop_variable_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
+def _build_loop_variable_clauses(client: bigquery.Client, source_table: str, processed_columns: set) -> tuple[list, set]:
     """
     Builds SELECT clauses for loop variable processing.
     
@@ -496,7 +485,7 @@ def build_loop_variable_clauses(client: bigquery.Client, source_table: str, proc
         raw_name = "_".join(f"d_{cid}" for cid in ordered_ids) + f"_{loop_number}" + version_suffix
         new_var_name = utils.excise_substrings(raw_name, constants.SUBSTRINGS_TO_FIX)
         
-        # Standardize case for the new variable name
+        # Standardize case for the new variable name (e.g., make lowercase)
         new_var_name = utils.standardize_column_case(new_var_name)
         
         # Skip this variable if it would create a duplicate
@@ -575,22 +564,22 @@ def process_columns(source_table: str, destination_table: str) -> dict:
         
         # Step 1: Build clauses for one-off column renames
         utils.logger.info("Step 1: Building one-off column rename clauses")
-        one_off_clauses, processed_columns = build_one_off_renames_clauses(
+        one_off_clauses, processed_columns = _build_one_off_renames_clauses(
             client, source_table, processed_columns)
         
         # Step 2: Build clauses for substring removal
         utils.logger.info(f"Step 2: Building clauses for removing substrings from {constants.SUBSTRINGS_TO_FIX}")
-        substring_clauses, processed_columns = build_substring_removal_clauses(
+        substring_clauses, processed_columns = _build_substring_removal_clauses(
             client, source_table, processed_columns)
         
         # Step 3: Build clauses for custom column transformations
         utils.logger.info("Step 3: Building custom transformation clauses")
-        custom_transform_clauses, processed_columns = build_custom_transform_clauses(
+        custom_transform_clauses, processed_columns = _build_custom_transform_clauses(
             client, source_table, processed_columns)
         
         # Step 4: Build clauses for loop variable processing
         utils.logger.info("Step 3: Building loop variable processing clauses")
-        loop_clauses, processed_columns = build_loop_variable_clauses(
+        loop_clauses, processed_columns = _build_loop_variable_clauses(
             client, source_table, processed_columns)
         
         # Combine all clauses with appropriate comments
@@ -676,25 +665,78 @@ def process_rows(source_table: str, destination_table: str) -> dict:
     utils.logger.info("Identifying binary columns...")
     binary_columns = utils.get_binary_columns(client=client, fq_table=source_table)
     utils.logger.info(f"Found {len(binary_columns)} binary columns")
+
+    utils.logger.info("Identifying false array columns...")
+    false_array_columns = utils.get_strict_false_array_columns(
+        client, 
+        fq_table=source_table, batch_size=100, 
+        use_reference=True,           
+        reference_file_path='reference/false_array_columns.json'      
+    )
+    utils.logger.info(f"Found {len(false_array_columns)} false array columns")
     
-    # Convert lists to sets before performing set difference
-    non_binary_columns = set(all_columns) - set(binary_columns)
-    utils.logger.info(f"Identified {len(non_binary_columns)} non-binary columns")
+    # Convert to sets for efficient operations and ensure no overlap
+    all_columns_set = set(all_columns)
+    binary_columns_set = set(binary_columns)
+    false_array_columns_set = set(false_array_columns)
+    
+    # Calculate non-binary, non-false-array columns
+    processed_columns = binary_columns_set | false_array_columns_set
+    non_processed_columns = all_columns_set - processed_columns
+    
+    utils.logger.info(f"Binary columns: {len(binary_columns_set)}")
+    utils.logger.info(f"False array columns: {len(false_array_columns_set)}")
+    utils.logger.info(f"Other columns: {len(non_processed_columns)}")
+    
+    # Check for any overlap (shouldn't happen, but good to verify)
+    overlap = binary_columns_set & false_array_columns_set
+    if overlap:
+        utils.logger.warning(f"Found {len(overlap)} columns that are both binary and false array: {overlap}")
 
     try:
         utils.logger.info("Building SQL SELECT parts...")
         select_parts = []
         
         # Step 1: Build SQL expressions for binary fields
-        for col in binary_columns:
+        for col in sorted(binary_columns_set):  # Sort for consistent ordering
             select_parts.append(utils.render_convert_0_1_to_yes_no_cids_expression(col))
-        
-        # Step 2: Build SQL expressions for non-binary fields
-        for col in non_binary_columns:
+
+        # Step 2: Build SQL expressions for false array fields
+        if false_array_columns_set:
+            utils.logger.info("Processing false array columns...")
+            for col in sorted(false_array_columns_set):  # Sort for consistent ordering
+                # Use the render_unwrap_singleton_expression function to create the SQL
+                select_parts.append(utils.render_unwrap_singleton_expression(col, "NULL"))
+
+        # Step 3: Build SQL expressions for remaining fields (non-binary, non-false-array)
+        for col in sorted(non_processed_columns):  # Sort for consistent ordering
             select_parts.append(f"`{col}`")
+        
+        # Log the counts for verification
+        utils.logger.info(f"Generated {len(select_parts)} SQL SELECT parts:")
+        utils.logger.info(f"  - Binary transformations: {len(binary_columns_set)}")
+        utils.logger.info(f"  - False array transformations: {len(false_array_columns_set)}")
+        utils.logger.info(f"  - Pass-through columns: {len(non_processed_columns)}")
+        
+        # Verify no duplicates in select_parts
+        column_names_in_select = []
+        for part in select_parts:
+            # Extract column name from "... AS column_name" or just "column_name"
+            if " AS " in part:
+                col_name = part.split(" AS ")[-1].strip()
+            else:
+                col_name = part.strip().strip('`')
+            column_names_in_select.append(col_name)
+        
+        # Check for duplicates
+        duplicates = [col for col in set(column_names_in_select) if column_names_in_select.count(col) > 1]
+        if duplicates:
+            utils.logger.error(f"Found duplicate column names in SELECT: {duplicates}")
+            raise ValueError(f"Duplicate column names detected: {duplicates}")
         
         # Create the final SQL query
         joined_select_parts = ",\n        ".join(select_parts)
+        
         sql = f"""
         /* Combined transformation query for {source_table} -> {destination_table} */
          
@@ -742,5 +784,5 @@ def process_rows(source_table: str, destination_table: str) -> dict:
 
 if __name__ == "__main__":
     source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
-    destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary"
+    destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary_and_false_arrays"
     process_rows(source_table=source_table, destination_table=destination_table)

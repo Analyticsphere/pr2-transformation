@@ -7,8 +7,8 @@ import textwrap
 # -----------------------------------------------------------------------------
 
 SERVICE_NAME = "pr2-transformation"
-ARTIFACT_GCS_BUCKET = os.environ.get('ARTIFACT_GCS_BUCKET')
-OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql/" 
+ARTIFACT_GCS_BUCKET = os.environ.get('ARTIFACT_GCS_BUCKET') # A place to send artifacts for visibility
+OUTPUT_SQL_PATH = f"{ARTIFACT_GCS_BUCKET}sql/"              # SQL queries are sent prior to  here for auditing/debugging
 
 # In production, the project should be set via an environment variable.
 PROJECT = os.environ.get("PROJECT_ID")
@@ -24,13 +24,16 @@ ALLOWED_NON_CID_VARIABLE_NAMES = ['connect_id']
 FORBIDDEN_NON_CID_VARIABLE_NAMES = ['token', 'uid', 'date', 'sha', 'siteAcronym', 'utm_source', 'verifiedSeen', 
                                     'id', 'pin', 'state_studyId', 'state_uid', 'firstSurveyCompletedSeen'] 
 
-# Substrings that need fixing (future updates; drop columns for now)
+# Substrings that need to be removed
 SUBSTRINGS_TO_FIX = ['_num', 'state_']
+
+# Allowable non-concept id substrings 
+ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state'] # TODO Consider removing this now that these substrings are removed in 27
 
 # Substrings indicating datatype conflicts (to be fixed upstream in Firestore; drop columns for now)
 SUBSTRINGS_DATATYPE_CONFLICT = ['provided', 'string', 'integer', 'entity']
 
-# Substrings indicating misnamed variables (exclude permanently from ETL; will be addressed upstream in Firestore)
+# Substrings indicating misnamed variables; They are handled by the ONE_OFF_COLUMN_RENAME_MAPPINGS, but excluded from downstream processing.
 SUBSTRINGS_MISSNAMED = [
     'sibcanc3d', 'chol', 'momcanc3d', 'sibcanc3o', 'uf', 'dadcanc3k', 'bloodclot', 'depress2',
     'htn', 'append', 'tublig', 'tonsils', 'breastdis', 'dm2',
@@ -39,12 +42,29 @@ SUBSTRINGS_MISSNAMED = [
 
 # Combine all substring lists, removing duplicates
 EXCLUDED_NON_CID_SUBSTRINGS = list(
-    SUBSTRINGS_DATATYPE_CONFLICT +
-    SUBSTRINGS_MISSNAMED
+    SUBSTRINGS_DATATYPE_CONFLICT 
+    + SUBSTRINGS_MISSNAMED
 )
 
-# Allowable non-concept id substrings
-ALLOWED_NON_CID_SUBSTRINGS = ['num', 'state']
+# -----------------------------------
+# Define false array parameters
+# -----------------------------------
+# Columns which only ever have these values within brackets are "false arrays". 
+# In our questionaire's they are stored as arrays, but they are flattened to 
+# strings downstream with a single bracketed value. 
+FALSE_ARRAY_VALUES = [
+    "[]",
+    "[178420302]",
+    "[958239616]",
+]
+
+# The list above was produced the scripts/identify_false_array_columns.py. It holds
+# a JSON file listing all of the "false array columns that were found". Loop variables
+# are labeled with a 
+FALSE_ARRAY_COLUMN_CONFIG = "reference/false_array_columns.json"
+
+# A regex pattern for identifying 9-digit concept ids within strings
+BRACKETED_NINE_DIGIT_PATTERN = r'^\[\d{9}\]$'
 
 # ------------------------------------------------------------------------------
 # Define one-off column renames that cannot be handled by generalized columns
@@ -132,6 +152,8 @@ ONE_OFF_COLUMN_RENAME_MAPPINGS = {
     ]
 }
 
+#
+# Congigure custom transforms and the affected source and target columns 
 CUSTOM_TRANSFORMS = {
     # https://github.com/Analyticsphere/pr2-documentation/issues/4
     "FlatConnect.module1_v2_JP": [
