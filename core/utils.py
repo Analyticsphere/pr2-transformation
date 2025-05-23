@@ -516,10 +516,9 @@ def get_false_array_columns_from_reference(
     """
     Identify false array columns by checking if they contain concept ID pairs from the reference file.
     
-    This is a much faster alternative to get_strict_false_array_columns() when you have
-    a pre-computed list of known false array concept ID pairs.
-    
-    A column matches if it contains ALL concept IDs from at least one pair in the reference file.
+    This function looks for:
+    1. Exact matches: columns that match the reference pairs exactly (e.g., "d_578895128_d_578895128")
+    2. Loop variables: columns that contain the reference pairs as prefixes (e.g., "d_578895128_d_578895128_19")
     
     Args:
         client (bigquery.Client): BigQuery client
@@ -540,15 +539,16 @@ def get_false_array_columns_from_reference(
         utils.logger.warning("No concept ID pairs loaded from reference file")
         return []
     
-    # Convert pairs to sets for easier comparison
-    reference_sets = []
+    # Create patterns to match from the reference pairs
+    reference_patterns = []
     for pair in concept_pairs:
         if isinstance(pair, list) and len(pair) >= 2:
-            # Convert to set to handle cases where both IDs in pair are the same
-            pair_set = set(pair)
-            reference_sets.append(pair_set)
+            # Create pattern for exact match and loop variable match
+            # e.g., for ["578895128", "578895128"] create "d_578895128_d_578895128"
+            pattern = f"d_{pair[0]}_d_{pair[1]}"
+            reference_patterns.append(pattern)
     
-    utils.logger.info(f"Loaded {len(reference_sets)} concept ID pairs from reference")
+    utils.logger.info(f"Created {len(reference_patterns)} patterns from reference pairs")
     
     try:
         # Get all column names from the table
@@ -558,21 +558,27 @@ def get_false_array_columns_from_reference(
         columns = [col for col in columns if col != "Connect_ID"]
         utils.logger.info(f"Processing {len(columns)} columns after excluding Connect_ID")
         
-        # Find columns that contain complete pairs from the reference
+        # Find columns that match the reference patterns
         matching_columns = []
         
         for col in columns:
-            # Extract concept IDs from the column name
-            column_concept_ids = set(extract_ordered_concept_ids(col))
-            
-            # Check if this column contains all concept IDs from any reference pair
-            for reference_set in reference_sets:
-                if reference_set.issubset(column_concept_ids):
+            # Check if this column matches any reference pattern
+            for pattern in reference_patterns:
+                # Check for exact match (e.g., "d_578895128_d_578895128")
+                if col == pattern:
                     matching_columns.append(col)
-                    utils.logger.debug(f"Column {col} matches reference pair {reference_set}")
-                    break  # Found a match, no need to check other pairs for this column
+                    utils.logger.debug(f"Column {col} exactly matches pattern {pattern}")
+                    break
+                # Check for loop variable match (e.g., "d_578895128_d_578895128_19")
+                elif col.startswith(pattern + "_") and col.count("_") > pattern.count("_"):
+                    # Additional check: ensure it's actually a loop variable (ends with digits)
+                    suffix = col[len(pattern + "_"):]
+                    if suffix.replace("_", "").isdigit():  # handles cases like "19" or "1_1"
+                        matching_columns.append(col)
+                        utils.logger.debug(f"Column {col} matches loop pattern {pattern}")
+                        break
         
-        utils.logger.info(f"Found {len(matching_columns)} columns containing complete concept ID pairs from reference")
+        utils.logger.info(f"Found {len(matching_columns)} columns matching reference patterns")
         return matching_columns
         
     except Exception as e:
@@ -641,26 +647,21 @@ def get_strict_false_array_columns(
                     # Create a clear, well-structured check for this column
                     column_check = f"""
                     SELECT
-
                     '{col}' AS column_name,
-
                     -- Check 1: Column has ≤3 distinct values AND at least one non-null value
                     ((SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}`) <= 3 
                     AND 
                     (SELECT COUNT(DISTINCT `{col}`) FROM `{fq_table}` WHERE `{col}` IS NOT NULL) > 0) AS has_few_non_null_values,
-
                     -- Check 2: Column only contains NULL or values from our false array list
                     (SELECT COUNTIF(
                     `{col}` IS NOT NULL
                     AND `{col}` NOT IN ({false_values_list})
                     ) FROM `{fq_table}`) = 0 AS only_has_false_array_values,
-
                     -- Check 3: Column has at most 1 value matching our bracketed pattern
                     (SELECT COUNT(DISTINCT `{col}`)
                     FROM `{fq_table}`
                     WHERE REGEXP_CONTAINS(`{col}`, r'{constants.BRACKETED_NINE_DIGIT_PATTERN}')
                     ) <= 1 AS has_single_concept_id
-                    
                     FROM
                     -- This is just a dummy FROM clause that returns exactly one row
                     (SELECT 1) AS dummy
@@ -753,7 +754,7 @@ def get_false_array_columns_for_tables(
             result[table] = []  # Empty list for failed tables
     
     return result
-   
+
 def render_unwrap_singleton_expression(col_name: str, default_value: str) -> str:
     """
     Render a SQL expression to handle survey unwrapping singleton values from variables stored as "false arrays".
