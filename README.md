@@ -6,24 +6,6 @@ A serverless REST API service for transforming Connect's data as part of the PR2
 
 The PR2 transformation service converts raw Connect survey data from the `FlatConnect` dataset into clean, standardized data in the `CleanConnect` dataset. The service generates and executes SQL queries in BigQuery while archiving all SQL for audit purposes.
 
-### Architecture
-
-```mermaid
-flowchart LR
-    composer["Cloud Composer<br>(Apache Airflow)"] --> |triggers| cloudrun["Cloud Run<br>(PR2 Transformation Service)"]
-    cloudrun --> |executes SQL| bq["BigQuery"]
-    cloudrun --> |archives SQL| gcs["Cloud Storage"]
-    
-    subgraph "Data Flow"
-        source["FlatConnect<br>(Source Data)"] --> |transformation| staging["Staging Tables"]
-        staging --> |transformation| clean["CleanConnect<br>(Clean Data)"]
-    end
-    
-    bq --- source
-    bq --- staging
-    bq --- clean
-```
-
 ## Features
 
 - **Column-level transformations**: Standardizes variable names, handles loop variables, removes unwanted substrings
@@ -155,60 +137,11 @@ END
 
 ### Local Setup
 
-> *Note:* The local setup needs some work and may require some debugging. This workflow was primarily developed using local test scripts for each step, but ultimately running the pipeline end-to-end in GCP for testing.
 
-1. Clone the repository:
-```bash
-git clone https://github.com/Analyticsphere/pr2-transformation.git
-cd pr2-transformation
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Set environment variables:
-```bash
-export PROJECT_ID="your-project-id"
-export ARTIFACT_GCS_BUCKET="gs://your-bucket/"
-```
-
-4. Run the Flask application:
-```bash
-python -m flask --app core/endpoints.py run
-```
 
 ### Testing
 
-Run the test suite:
-```bash
-pytest
-```
-> *Note:* Some tests are out of date as of 5/23/25 and are therefore failing.
 
-### Docker Deployment
-
-Build and run the Docker container:
-```bash
-# Build
-docker build -t pr2-transform-app .
-
-# Run
-docker run -d -e PORT=8080 -p 8080:8080 \
-  -e PROJECT_ID="your-project-id" \
-  -e ARTIFACT_GCS_BUCKET="gs://your-bucket/" \
-  pr2-transform-app
-```
-
-Or use the convenience scripts:
-```bash
-# Build and run
-./bin/build_and_run.sh
-
-# Stop and remove
-./bin/stop_and_remove.sh
-```
 
 ### Cloud Deployment
 
