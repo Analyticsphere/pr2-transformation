@@ -69,7 +69,7 @@ def merge_table_versions():
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
     
     
-@app.route('/create_controlled_tier', methods=['GET'])
+@app.route('/create_controlled_tier', methods=['POST'])
 def createControlledTier():
     mapping: dict[str, any] = request.get_json() or {}
     source, destination = request_helpers.extract_source_and_destination(mapping)
