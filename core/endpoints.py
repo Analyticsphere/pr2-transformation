@@ -67,3 +67,13 @@ def merge_table_versions():
     except Exception as e:
         utils.logger.exception("An error occurred in merge_table_versions endpoint.")
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+    
+    
+@app.route('/create_controlled_tier', methods=['GET'])
+def createControlledTier():
+    utils.logger.info("Create Controlled Tier was accessed.")
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'service': constants.SERVICE_NAME
+    }), 200
