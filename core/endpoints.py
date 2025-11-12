@@ -70,13 +70,13 @@ def merge_table_versions():
     
     
 @app.route('/create_controlled_tier', methods=['POST'])
-def createControlledTier():
+def createSensitiveTier():
     mapping: dict[str, any] = request.get_json() or {}
     source, destination = request_helpers.extract_source_and_destination(mapping)
     
     try:
-        utils.logger.info(f"create_controlled_tier endpoint called. Merging {source} to generate {destination}.")
-        status = transformations.create_controlled_tier(source, destination)
+        utils.logger.info(f"create_sensitive_tier endpoint called. Merging {source} to generate {destination}.")
+        status = transformations.create_sensitive_tier(source, destination)
         return jsonify({
             'status': status,
             'timestamp': datetime.utcnow().isoformat(),
