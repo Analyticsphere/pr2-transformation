@@ -782,56 +782,56 @@ def process_rows(source_table: str, destination_table: str) -> dict:
         utils.logger.exception(f"Error in process_rows: {e}")
         raise e
     
-def create_sensitive_tier(source_table: str, destination_table: str) -> dict:
-    project, dataset, table = utils.parse_fq_table(source_table)
-    client = bigquery.Client(project=project)
-    sql = f"""
-        /* Combined transformation query for {source_table} -> {destination_table} */
+# def create_sensitive_tier(source_table: str, destination_table: str) -> dict:
+#     project, dataset, table = utils.parse_fq_table(source_table)
+#     client = bigquery.Client(project=project)
+#     sql = f"""
+#         /* Combined transformation query for {source_table} -> {destination_table} */
         
-        CREATE OR REPLACE TABLE `{destination_table}` AS
-        SELECT
-            CONNECT_ID, d_849518448,d_684926335, d_253532712, d_119643471,
-            d_706256705, d_435027713, d_827220437, d_699625233, d_919254129,
-            d_558435199, d_878865966, d_684635302, d_167958071, d_949302066,
-            d_536735468, d_663265240, d_976570371
-        FROM `{source_table}`
-        """
+#         CREATE OR REPLACE TABLE `{destination_table}` AS
+#         SELECT
+#             CONNECT_ID, d_849518448,d_684926335, d_253532712, d_119643471,
+#             d_706256705, d_435027713, d_827220437, d_699625233, d_919254129,
+#             d_558435199, d_878865966, d_684635302, d_167958071, d_949302066,
+#             d_536735468, d_663265240, d_976570371
+#         FROM `{source_table}`
+#         """
     
-    # Save the SQL to GCS for audit purposes
-    try:
-        utils.logger.info("Saving SQL to GCS...")
-        gcs_client = storage.Client()
-        gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
-        utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
-        utils.logger.info(f"SQL saved to GCS at {gcs_path}")
-    except Exception as e:
-        utils.logger.exception(f"Error saving SQL to GCS: {e}")
-        raise e
+#     # Save the SQL to GCS for audit purposes
+#     try:
+#         utils.logger.info("Saving SQL to GCS...")
+#         gcs_client = storage.Client()
+#         gcs_path = f"{constants.OUTPUT_SQL_PATH}{destination_table}.sql"
+#         utils.save_sql_string(sql=sql, path=gcs_path, storage_client=gcs_client)
+#         utils.logger.info(f"SQL saved to GCS at {gcs_path}")
+#     except Exception as e:
+#         utils.logger.exception(f"Error saving SQL to GCS: {e}")
+#         raise e
     
-    # Execute the SQL
-    try:
-        utils.logger.info("Executing SQL Controlled Tier query...")
-        query_job = client.query(sql)
-        utils.logger.info(f"Query job created with ID: {query_job.job_id}")
-        query_job.result()  # Wait for the query to finish
-        utils.logger.info("Query execution completed successfully")
+#     # Execute the SQL
+#     try:
+#         utils.logger.info("Executing SQL Controlled Tier query...")
+#         query_job = client.query(sql)
+#         utils.logger.info(f"Query job created with ID: {query_job.job_id}")
+#         query_job.result()  # Wait for the query to finish
+#         utils.logger.info("Query execution completed successfully")
         
-        status = f"Table {destination_table} successfully created with all transformations applied"
-        utils.logger.info(status)
-        return {
-            "status": status,
-            "submitted_sql_path": constants.OUTPUT_SQL_PATH
-        }
-    except Exception as e:
-        utils.logger.exception(f"Error executing SQL: {e}")
-        # Log more details about the exception
-        utils.logger.error(f"Exception type: {type(e).__name__}")
-        utils.logger.error(f"Exception args: {e.args}")
-        raise e
+#         status = f"Table {destination_table} successfully created with all transformations applied"
+#         utils.logger.info(status)
+#         return {
+#             "status": status,
+#             "submitted_sql_path": constants.OUTPUT_SQL_PATH
+#         }
+#     except Exception as e:
+#         utils.logger.exception(f"Error executing SQL: {e}")
+#         # Log more details about the exception
+#         utils.logger.error(f"Exception type: {type(e).__name__}")
+#         utils.logger.error(f"Exception args: {e.args}")
+        # raise e
     
 
 if __name__ == "__main__":
     source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
     destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary_and_false_arrays"
     process_rows(source_table=source_table, destination_table=destination_table)
-    create_sensitive_tier(source_table=source_table, destination_table=destination_table)
+    # create_sensitive_tier(source_table=source_table, destination_table=destination_table)
