@@ -782,7 +782,7 @@ def process_rows(source_table: str, destination_table: str) -> dict:
         utils.logger.exception(f"Error in process_rows: {e}")
         raise e
     
-def create_controlled_tier(source_table: str, destination_table: str) -> dict:
+def create_sensitive_tier(source_table: str, destination_table: str) -> dict:
     project, dataset, table = utils.parse_fq_table(source_table)
     client = bigquery.Client(project=project)
     sql = f"""
@@ -834,4 +834,4 @@ if __name__ == "__main__":
     source_table = "nih-nci-dceg-connect-prod-6d04.ForTestingOnly.module1_v1_with_cleaned_columns"
     destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary_and_false_arrays"
     process_rows(source_table=source_table, destination_table=destination_table)
-    create_controlled_tier(source_table=source_table, destination_table=destination_table)
+    create_sensitive_tier(source_table=source_table, destination_table=destination_table)
