@@ -69,7 +69,7 @@ def merge_table_versions():
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
     
     
-@app.route('/create_controlled_tier', methods=['GET'])
+@app.route('/create_sensitive_tier', methods=['GET'])
 def createSensitiveTier():
     utils.logger.info("API status check called")
     return jsonify({
