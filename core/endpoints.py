@@ -69,11 +69,19 @@ def merge_table_versions():
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
     
     
-@app.route('/create_sensitive_tier', methods=['GET'])
+@app.route('/create_sensitive_tier', methods=['POST'])
 def createSensitiveTier():
-    utils.logger.info("API status check called")
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
-        'service': constants.SERVICE_NAME
-    }), 200
+    mapping: dict[str, any] = request.get_json() or {}
+    source, destination = request_helpers.extract_source_and_destination(mapping)
+    
+    try:
+        utils.logger.info(f"create_sensitive_tier endpoint called. Merging {source} to generate {destination}.")
+        status = transformations.create_sensitive_tier(source, destination)
+        return jsonify({
+            'status': status,
+            'timestamp': datetime.utcnow().isoformat(),
+            'service': constants.SERVICE_NAME
+        }), 200
+    except Exception as e:
+        utils.logger.exception("An error occurred in merge_table_versions endpoint.")
+        return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
