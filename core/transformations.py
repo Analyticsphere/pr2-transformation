@@ -882,4 +882,4 @@ if __name__ == "__main__":
     destination_table = "nih-nci-dceg-connect-prod-6d04.CleanConnect.module1_fixed_binary_and_false_arrays"
     process_rows(source_table=source_table, destination_table=destination_table)
     create_sensitive_tier(source_table=source_table, destination_table=destination_table)
-    kt_session_endpoint(source_table=source_table, destination_table=destination_table)
+
