@@ -85,3 +85,13 @@ def createSensitiveTier():
     except Exception as e:
         utils.logger.exception("An error occurred in merge_table_versions endpoint.")
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+    
+
+@app.route('/KTSession', methods=['GET'])
+def KTSession():
+    utils.logger.info("API status check called")
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'service': constants.SERVICE_NAME
+    }), 200
